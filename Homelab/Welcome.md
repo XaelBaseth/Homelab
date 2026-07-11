@@ -1,0 +1,7 @@
+This repo is made to document my journey through building my very first lab.
+
+Let's start with a list of my current materials :
+
+- [BOSGAM E5](https://www.amazon.fr/-/en/BOSGAME-Windows-Gaming-Display-Wi-Fi6E/dp/B0GWTM4DRN?crid=2ZZZQH7E1L0P0&dib=eyJ2IjoiMSJ9.Yr1rb1h5eLLSa4odnEPJOL5Z6Q6HjbVS0ZpCBDEx1tVin4V3GxnX1ekeS9Fm2gO0zbMwyPriuM68NVxiakhSDf7T2tStFBpUn_hjECyPk7FM9HDM_QzLCR_Vse3r69kL1TJhq3zKgQg7wHTFtmLCqHgq8pUhMhb2NHlnIGXE4w7X88Y2n8-Fxci07D8ikY_I.I-ViZwckxb0F9jb3XVSTo0hi-72x0DUMvxH6hiRc3m0&dib_tag=se&keywords=bosgame%2Be5&qid=1783774191&sprefix=bosgame%2Be5%2Caps%2C168&sr=8-5&th=1)
+- [Beelink Mini S12 Pro](https://www.amazon.fr/-/en/Beelink-S12-Lake-N100-Processor-Computer/dp/B0DPM4N1SL?crid=1ANLDC66X4JXZ&dib=eyJ2IjoiMSJ9.uMnWEMJQtSWaaHF1m24aCSchADqZj-BpWpFAhKMM1GxjtKvWqqlKlhW1DwjOTh-GkWb3WrOiTlcHiGzKcqoCMyE9w2FSVUJdv9LYxDLuBtR5tA4_s-bQlJy8NnxOF6iPUuoLG9P36R6wmQnA2h_-xtdgU-SfX7wAYEl4pViISPfYtsMRhwjeatJKerCnZ66aMFZvMYabplOgAe2lRRnadFEsqQJMWsZrubZI_vrqCzYKFOSQksf8JLK0IYmsqm8jCVZ1VG9SSMG7zQLj575n2mu5a_TMImJbOdpHb81pUYs.F7sUz9okWrDKU1s8_8GRW-2FIePfvqrrnHGjE6Kqnmg&dib_tag=se&keywords=beelink%2Bmini%2Bs12&qid=1783774268&sprefix=beeling%2Bmini%2Bs12%2Caps%2C155&sr=8-6&th=1)
+- [TP Link TL-SG608E]()
