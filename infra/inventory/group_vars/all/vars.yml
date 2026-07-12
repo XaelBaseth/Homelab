@@ -1,0 +1,22 @@
+---
+# ── Shared media-stack configuration ──
+timezone: Europe/Paris
+media_puid: 1000
+media_pgid: 1000
+
+# Host paths
+media_root: /data                              # ext4 media drive (from the storage role)
+media_stack_dir: /home/media-stack             # compose + .env live here
+media_stack_appdata: /home/media-stack/appdata # per-service /config bind mounts
+media_owner: beelink
+media_group: beelink
+
+# ── VPN ──
+vpn_server_countries: Netherlands
+
+# GPU groups for Jellyfin Quick Sync (from: getent group render video)
+jellyfin_render_gid: 992
+jellyfin_video_gid: 44
+
+# services will be jellyfin.home, sonarr.home, etc.
+local_domain: home

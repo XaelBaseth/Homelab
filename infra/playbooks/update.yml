@@ -1,0 +1,22 @@
+---
+- name: Update and upgrade all packages (run manually on your weekly cadence)
+  hosts: beelink
+  become: true
+  tasks:
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+
+    - name: Full dist-upgrade
+      ansible.builtin.apt:
+        upgrade: dist
+
+    - name: Check whether a reboot is required
+      ansible.builtin.stat:
+        path: /var/run/reboot-required
+      register: reboot_required
+
+    - name: Tell me if a reboot is needed
+      ansible.builtin.debug:
+        msg: "⚠️  A reboot is required to finish applying updates."
+      when: reboot_required.stat.exists

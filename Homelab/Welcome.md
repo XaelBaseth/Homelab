@@ -8,3 +8,7 @@ Let's start with a list of my current materials :
 
 I will start from setting up a OPNsens, an open source firewall allowing me to work with LAN and VLAN in order to get more control on my private network.
 I install the firewall on the BOSGAM machine instead of in a ProxMox server. This is so in case of Proxmox failure I will retain Internet access. 
+
+## Projects
+
+- [[Media Server]] — Jellyfin + *arr + VPN downloads on the Beelink, fully Ansible-managed. See also its [[Runbook]] and [[Roadmap]].
