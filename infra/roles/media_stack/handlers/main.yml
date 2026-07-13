@@ -1,4 +1,0 @@
----
-- name: Recreate VPN containers
-  ansible.builtin.command: docker restart gluetun qbittorrent
-  changed_when: true

@@ -1,2 +1,0 @@
-glance_image: glanceapp/glance:latest
-glance_dir: /home/glance
