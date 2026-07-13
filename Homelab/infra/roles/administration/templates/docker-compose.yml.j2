@@ -39,18 +39,18 @@ services:
     container_name: watchtower
     environment:
       - TZ=${TZ}
-      - WATCHTOWER_MONITOR_ONLY=true                   # NEVER pulls or recreates — Ansible owns the image lifecycle
+      - WATCHTOWER_CLEANUP=true                        # remove old images after a successful update
       - WATCHTOWER_NO_STARTUP_MESSAGE=true
-      - WATCHTOWER_SCHEDULE={{ watchtower_schedule }}   # 6-field cron (with seconds)
+      - WATCHTOWER_SCHEDULE={{ watchtower_schedule }}   # 6-field cron (with seconds) — pulls + recreates outdated containers
 {% if vault_watchtower_notification_url is defined and vault_watchtower_notification_url | length > 0 %}
       - WATCHTOWER_NOTIFICATION_URL=${WATCHTOWER_NOTIFICATION_URL}   # shoutrrr Discord URL, e.g. discord://TOKEN@ID
-      - WATCHTOWER_NOTIFICATIONS_LEVEL=info
+      - WATCHTOWER_NOTIFICATIONS_LEVEL=info            # posts a summary of what was updated each run
 {% endif %}
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock      # rw: reads image state; monitor-only means it won't act on it
+      - /var/run/docker.sock:/var/run/docker.sock      # rw: reads image state and pulls/recreates outdated containers
     labels:                                            # headless — this label set is its only dashboard presence
       - glance.name=Watchtower
       - glance.icon=di:watchtower
       - glance.url=http://{{ vault_beelink_host }}:{{ dozzle_port }}
-      - glance.description=Update notifier (monitor-only) — alerts to Discord; logs in Dozzle
+      - glance.description=Auto-updater — pulls weekly, alerts to Discord; logs in Dozzle
     restart: unless-stopped

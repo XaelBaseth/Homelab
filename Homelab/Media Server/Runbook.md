@@ -116,7 +116,7 @@ accounts are set up once in each UI after the first deploy; the roles only stand
 |------|-----|--------|
 | Dozzle | `http://<beelink>:8888` | **Live log aggregation** across every container (socket `:ro` — reads logs, never controls) |
 | Dockge | `http://<beelink>:5001` | **Compose-stack management** — start/stop/restart/update/edit every stack under `/home/stacks` |
-| Watchtower | (headless) | **Notify-only** image-update checks (daily 08:00) → Discord; never pulls or recreates |
+| Watchtower | (headless) | **Weekly auto-updater** (Saturday 08:00) — pulls + recreates outdated containers, cleans old images, summary → Discord |
 
 > ⚠️ Uptime Kuma and Beszel both run **on the Beelink they monitor** — if the box dies, they die
 > with it and stay silent. That blind spot is exactly why the off-box healthchecks.io heartbeat
@@ -144,22 +144,38 @@ accounts are set up once in each UI after the first deploy; the roles only stand
 3. **healthchecks.io**: create a check (period 5 min, small grace) → copy its ping URL into
    `vault_healthchecks_ping_url` → add the **Discord** integration on their side → re-run
    `monitoring.yml` to install the cron (`crontab -l` as root shows `healthchecks-heartbeat`).
+4. **Daily status digest → Discord** (positive heartbeat: reports what's fine, not only incidents):
+   - In **Uptime Kuma** → Settings → **API Keys** → add a key → copy it into `vault_uptime_kuma_api_key`.
+     (This unlocks the `/metrics` endpoint the script reads; Basic auth, empty user + key as password.)
+   - **Beszel** → `vault_beszel_user` / `vault_beszel_password`. Beszel (PocketBase) has no static
+     API key — reads need a user token minted from credentials, so the script logs in like the UI does.
+     Prefer a **dedicated read-only Beszel user** for this over reusing your admin login. The hub's API
+     gives per-host CPU/MEM and root-disk %, plus the **`/data` media drive** via its extra-filesystem
+     stats (the `.beszel` marker dir mounted at `/extra-filesystems/data`).
+   - Create a **new dedicated Discord webhook** for routine reports (keep it out of the alert channel)
+     → `vault_status_report_webhook` (raw `https://discord.com/api/webhooks/…` URL, not shoutrrr).
+   - `ansible-vault edit inventory/group_vars/all/vault.yml` → set all four → re-run `monitoring.yml`.
+     Installs `status-report-daily` in root's crontab (fires once a day, default 08:00); the
+     script lives at `/home/stacks/monitoring/status-report.py` and logs to `/var/log/status-report.log`.
+   - Test on demand without waiting for cron: `sudo python3 /home/stacks/monitoring/status-report.py`.
+     A green embed = all monitors up and every host under 90% CPU/MEM/DISK; red = something needs a look.
 
 **First-time setup — administration (once, after `ansible-playbook playbooks/administration.yml`):**
 
-4. **Dozzle** (`:8888`): zero-config — open it and every container's live logs are there, with
+5. **Dozzle** (`:8888`): zero-config — open it and every container's live logs are there, with
    search and multi-container tail. (No auth by default; fine on the LAN. Add `DOZZLE_AUTH_*`
    env vars if it's ever exposed beyond the LAN.)
-5. **Dockge** (`:5001`): create the admin user on first open. It lists every stack under
+6. **Dockge** (`:5001`): create the admin user on first open. It lists every stack under
    `/home/stacks` (`media-stack`, `monitoring`, `glance`, `administration`) and can
    start/stop/restart/update or edit each. **Ansible stays the source of truth** — treat Dockge for
    actions (bounce a stack, pull an update, read a stack's logs), not for permanent config edits, or
    the next role run overwrites them. Anything you want to keep goes back into the role template.
-6. **Watchtower** (headless — nothing to open): runs `WATCHTOWER_MONITOR_ONLY=true`, so it **only
-   reports** newer images, never applies them. To get the Discord pings, set the optional
-   `vault_watchtower_notification_url` (shoutrrr `discord://TOKEN@ID`) and re-run `administration.yml`;
-   without it, the findings just log to Watchtower's own container (readable in Dozzle). When it flags
-   an update, you bump the tag/digest in the role's `defaults` and converge — never let it self-update.
+7. **Watchtower** (headless — nothing to open): runs on `WATCHTOWER_SCHEDULE` (every **Saturday 08:00**),
+   pulls + recreates any outdated container on the host, cleans up old images (`WATCHTOWER_CLEANUP`), and
+   posts a **summary of what changed** to Discord. Set the optional `vault_watchtower_notification_url`
+   (shoutrrr `discord://TOKEN@ID`) and re-run `administration.yml` to get the message; without it, the run
+   summary just logs to Watchtower's own container (readable in Dozzle). To pin/exclude a service from the
+   weekly update, give its container `com.centurylinklabs.watchtower.enable=false` and converge.
    > **Image = `nickfedor/watchtower`, not `containrrr/watchtower`.** The original is unmaintained and
    > its old Docker API client (1.25) crash-loops against modern Engine (`client version 1.25 is too
    > old`). The `nickfedor` fork is the maintained drop-in.

@@ -53,3 +53,29 @@
     job: "curl -fsS -m 10 --retry 3 {{ vault_healthchecks_ping_url }} > /dev/null 2>&1"
     user: root
   when: vault_healthchecks_ping_url is defined and vault_healthchecks_ping_url | length > 0
+
+# ── Daily status digest (Uptime Kuma up/down + Beszel host metrics) → Discord ──
+# Both tasks are gated on all four secrets being present, so a converge before you've
+# added them to the vault simply skips the feature instead of erroring.
+- name: Configure the daily status-report digest
+  when:
+    - vault_status_report_webhook is defined and vault_status_report_webhook | length > 0
+    - vault_uptime_kuma_api_key is defined and vault_uptime_kuma_api_key | length > 0
+    - vault_beszel_user is defined and vault_beszel_user | length > 0
+    - vault_beszel_password is defined and vault_beszel_password | length > 0
+  block:
+    - name: Render the status-report script (root-owned — embeds secrets)
+      ansible.builtin.template:
+        src: status-report.py.j2
+        dest: "{{ monitoring_dir }}/status-report.py"
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Install the daily status-report cron
+      ansible.builtin.cron:
+        name: status-report-daily
+        hour: "{{ status_report_hour }}"
+        minute: "{{ status_report_minute }}"
+        job: "python3 {{ monitoring_dir }}/status-report.py >> /var/log/status-report.log 2>&1"
+        user: root

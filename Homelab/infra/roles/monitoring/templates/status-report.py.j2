@@ -1,0 +1,188 @@
+#!/usr/bin/env python3
+# Homelab daily status digest — MANAGED BY ANSIBLE (monitoring role). Do not edit on the host.
+# Pulls per-monitor up/down from Uptime Kuma (/metrics) + per-host CPU/MEM/DISK from Beszel,
+# then posts a single Discord embed to the dedicated status webhook. Stdlib only (no deps).
+CONFIG = {
+    "kuma_url":    "http://{{ vault_beelink_host }}:{{ uptime_kuma_port }}/metrics",
+    "kuma_key":    "{{ vault_uptime_kuma_api_key }}",
+    "beszel_url":  "http://{{ vault_beelink_host }}:{{ beszel_hub_port }}",
+    "beszel_user": "{{ vault_beszel_user }}",
+    "beszel_pass": "{{ vault_beszel_password }}",
+    "webhook":     "{{ vault_status_report_webhook }}",
+    "tz":          "{{ timezone }}",
+    "disk_warn":   {{ status_report_disk_warn_pct }},
+    "load_warn":   {{ status_report_load_warn_pct }},
+}
+{% raw %}
+import base64
+import json
+import re
+import urllib.error
+import urllib.parse
+import urllib.request
+from datetime import datetime
+
+
+def http(url, data=None, headers=None, method=None, timeout=15):
+    """Minimal JSON-capable HTTP helper. Returns (status, body_text)."""
+    headers = dict(headers or {})
+    # Discord is behind Cloudflare, which 403s the default "Python-urllib" UA — send a real one.
+    headers.setdefault("User-Agent", "Homelab-Status/1.0")
+    if data is not None and not isinstance(data, (bytes, bytearray)):
+        data = json.dumps(data).encode()
+        headers.setdefault("Content-Type", "application/json")
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return r.status, r.read().decode()
+    except urllib.error.HTTPError as e:
+        # Surface the response body (e.g. PocketBase's "Failed to authenticate." on a 400)
+        detail = ""
+        try:
+            detail = ": " + e.read().decode()[:300]
+        except Exception:
+            pass
+        raise RuntimeError("HTTP %s %s%s" % (e.code, e.reason, detail)) from None
+
+
+def pct(x):
+    return "{:.0f}%".format(x) if isinstance(x, (int, float)) else "?"
+
+
+# ── Uptime Kuma: reachability per monitor (Prometheus /metrics, Basic auth ":<apikey>") ──
+services_up, services_down = [], []
+kuma_error = None
+try:
+    token = base64.b64encode((":" + CONFIG["kuma_key"]).encode()).decode()
+    _, body = http(CONFIG["kuma_url"], headers={"Authorization": "Basic " + token})
+    for line in body.splitlines():
+        if not line.startswith("monitor_status"):
+            continue
+        m = re.search(r'monitor_name="([^"]*)"', line)
+        name = m.group(1) if m else "?"
+        try:
+            v = int(float(line.rsplit(" ", 1)[-1].strip()))
+        except ValueError:
+            continue
+        if v == 1:
+            services_up.append(name)
+        elif v == 0:
+            services_down.append(name)
+        elif v == 3:
+            services_up.append(name + " (maintenance)")
+        # v == 2 (pending) is transient — skip
+except Exception as e:  # noqa: BLE001 — a broken probe must still yield a report
+    kuma_error = str(e)
+
+# ── Beszel: per-host CPU / MEM / DISK (PocketBase API) ──
+hosts = []
+beszel_error = None
+try:
+    # Beszel dashboard users live in `users`, but the initial/admin account is a PocketBase
+    # `_superusers` record — try both so either kind of login works.
+    auth = None
+    last_err = None
+    for coll in ("users", "_superusers"):
+        try:
+            _, body = http(
+                CONFIG["beszel_url"] + "/api/collections/" + coll + "/auth-with-password",
+                data={"identity": CONFIG["beszel_user"], "password": CONFIG["beszel_pass"]},
+            )
+            auth = json.loads(body)["token"]
+            break
+        except Exception as ex:  # noqa: BLE001
+            last_err = ex
+    if auth is None:
+        raise last_err or RuntimeError("auth failed on all collections")
+    _, body = http(
+        CONFIG["beszel_url"] + "/api/collections/systems/records?perPage=100&sort=name",
+        headers={"Authorization": auth},
+    )
+    for rec in json.loads(body).get("items", []):
+        info = rec.get("info") or {}
+        h = {
+            "name": rec.get("name", "?"),
+            "status": rec.get("status", "?"),
+            "cpu": info.get("cpu"),   # CPU usage %
+            "mem": info.get("mp"),    # memory used %
+            "disk": info.get("dp"),   # root disk used %
+            "extra": [],              # extra filesystems (e.g. the /data media drive)
+        }
+        # The root disk (dp) lives on `info`, but extra filesystems mounted into the agent
+        # (our /data drive via /extra-filesystems/data) are only in the time-series stats.
+        # Grab the newest system_stats row and read its `efs` map — best-effort.
+        sid = rec.get("id")
+        if sid:
+            try:
+                q = urllib.parse.quote("system='%s'" % sid)
+                _, sbody = http(
+                    CONFIG["beszel_url"]
+                    + "/api/collections/system_stats/records?perPage=1&sort=-created&filter=" + q,
+                    headers={"Authorization": auth},
+                )
+                items = json.loads(sbody).get("items", [])
+                efs = ((items[0].get("stats") or {}).get("efs") if items else None) or {}
+                for label, fs in efs.items():
+                    total, used = fs.get("d"), fs.get("du")   # GB
+                    fpct = (used / total * 100) if total else None
+                    h["extra"].append({"label": label, "pct": fpct, "used": used, "total": total})
+            except Exception:  # noqa: BLE001 — extra-fs is a bonus; core metrics already captured
+                pass
+        hosts.append(h)
+except Exception as e:  # noqa: BLE001
+    beszel_error = str(e)
+
+# ── Health verdict ──
+all_ok = not services_down and kuma_error is None and beszel_error is None
+for h in hosts:
+    if h["status"] != "up":
+        all_ok = False
+    disks = [h["disk"]] + [e["pct"] for e in h["extra"]]
+    if any(isinstance(d, (int, float)) and d >= CONFIG["disk_warn"] for d in disks):
+        all_ok = False
+    for k in ("cpu", "mem"):
+        v = h.get(k)
+        if isinstance(v, (int, float)) and v >= CONFIG["load_warn"]:
+            all_ok = False
+
+# ── Compose the Discord embed ──
+def clamp(lines, empty):
+    text = "\n".join(lines) if lines else empty
+    return text[:1017] + "…" if len(text) > 1024 else text
+
+
+svc_lines = [f"🔴 {n}" for n in services_down] + [f"🟢 {n}" for n in services_up]
+if kuma_error:
+    svc_lines = [f"⚠️ Uptime Kuma unreachable: {kuma_error}"]
+
+host_lines = []
+for h in hosts:
+    icon = "🟢" if h["status"] == "up" else "🔴"
+    line = f"{icon} **{h['name']}** — CPU {pct(h['cpu'])} · MEM {pct(h['mem'])} · DISK {pct(h['disk'])}"
+    for e in h["extra"]:
+        line += f"\n　└ {e['label']}: {pct(e['pct'])}"
+        if isinstance(e["used"], (int, float)) and isinstance(e["total"], (int, float)):
+            line += f" ({e['used']:.0f}/{e['total']:.0f} GB)"
+    host_lines.append(line)
+if beszel_error:
+    host_lines = [f"⚠️ Beszel unreachable: {beszel_error}"]
+
+n_up, n_down = len(services_up), len(services_down)
+now = datetime.now().strftime("%Y-%m-%d %H:%M")
+embed = {
+    "title": "🟢 All systems nominal" if all_ok else "🔴 Attention needed",
+    "description": f"{n_up} up · {n_down} down · {len(hosts)} host(s) · {now} ({CONFIG['tz']})",
+    "color": 0x2ECC71 if all_ok else 0xE74C3C,
+    "fields": [
+        {"name": f"Services ({n_up}/{n_up + n_down} up)", "value": clamp(svc_lines, "No monitors found"), "inline": False},
+        {"name": "Hosts", "value": clamp(host_lines, "No systems found"), "inline": False},
+    ],
+    "footer": {"text": "Homelab daily status · monitoring role"},
+}
+
+try:
+    http(CONFIG["webhook"], data={"username": "Homelab Status", "embeds": [embed]})
+except Exception as e:  # noqa: BLE001
+    print("Failed to post status report:", e)
+    raise
+{% endraw %}

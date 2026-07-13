@@ -15,3 +15,12 @@ beszel_agent_port: 45876
 
 # healthchecks.io dead-man's-switch cadence (Beelink pings out every N minutes)
 healthchecks_interval_minutes: 5
+
+# ── Daily status digest → dedicated Discord webhook ──
+# A stdlib Python script (status-report.py) runs once a day: reads up/down per monitor from
+# Uptime Kuma's /metrics and per-host CPU/MEM/DISK from Beszel, then posts one Discord embed.
+# Green "all nominal" if everything is up and under the warn thresholds; red otherwise.
+status_report_hour: 8            # 24h local time (host timezone)
+status_report_minute: 0
+status_report_disk_warn_pct: 90  # a host disk at/above this flips the report to "attention needed"
+status_report_load_warn_pct: 90  # same for sustained CPU or memory %

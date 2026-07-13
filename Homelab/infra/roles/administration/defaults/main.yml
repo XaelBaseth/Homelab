@@ -3,7 +3,7 @@
 # (kept separate from `monitoring`, which only *observes* — different job, different blast radius)
 dozzle_image: amir20/dozzle:latest              # live log aggregation across every container
 dockge_image: louislam/dockge:1                 # compose-stack management UI (pinned major, per upstream)
-watchtower_image: nickfedor/watchtower:latest   # image-update NOTIFIER (monitor-only — never pulls/recreates)
+watchtower_image: nickfedor/watchtower:latest   # image AUTO-UPDATER — pulls + recreates outdated containers on schedule
                                                 # maintained fork — original containrrr/watchtower is stale and its old
                                                 # Docker API client (1.25) crash-loops against modern Engine (needs >=1.40)
 
@@ -15,5 +15,6 @@ administration_appdata: /home/administration/appdata
 dozzle_port: 8888
 dockge_port: 5001
 
-# Watchtower notify-only cadence — 6-field cron (incl. seconds): daily 08:00 update check
-watchtower_schedule: "0 0 8 * * *"
+# Watchtower auto-update cadence — 6-field cron (incl. seconds): every Saturday 08:00 (dow 6)
+# Pulls + recreates any outdated container on the host, then posts a summary to Discord.
+watchtower_schedule: "0 0 8 * * 6"

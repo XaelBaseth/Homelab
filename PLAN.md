@@ -226,11 +226,12 @@ add the next service group.** Add services in this order, verifying each before 
   stacks dir bind-mounted at the **same path** in/out (`DOCKGE_STACKS_DIR={{ stacks_root }}`).
 - **Log aggregation = Dozzle (not Loki/Grafana).** Single-host, zero-config, `docker.sock` **ro**,
   live tail across all containers. Loki+Grafana deferred — only worth it for long-term retention.
-- **Watchtower = notify-only (`WATCHTOWER_MONITOR_ONLY=true`).** Auto-update would pull/recreate
-  containers out from under Ansible and break the digest-pinning TODO, so it only Discord-pings
-  (shoutrrr `vault_watchtower_notification_url`, optional) when a newer image exists; the actual
-  update still happens via a role edit + converge. Registry-level signal that complements Glance's
-  GitHub releases widget.
+- **Watchtower = weekly auto-updater (`WATCHTOWER_SCHEDULE`, Saturday 08:00).** Pulls + recreates
+  any outdated container on the host in one batch, cleans up old images (`WATCHTOWER_CLEANUP`), then
+  Discord-pings a summary of what changed (shoutrrr `vault_watchtower_notification_url`, optional).
+  Deliberately supersedes the earlier notify-only stance and the digest-pinning TODO: on a single
+  host the convenience of hands-off weekly updates outweighs Ansible owning every image version.
+  Complements Glance's GitHub releases widget.
 
 ## Progress log
 - **Phase 0** ✅ done — Debian + SSH + sudo user with key.
@@ -273,8 +274,8 @@ add the next service group.** Add services in this order, verifying each before 
     switch (root cron pings out every 5 min). Own compose project + `monitoring.yml` playbook.
   - **2.9** ✅ done — **new `administration` role/stack** (separate from `monitoring` — observe vs
     act): **Dozzle** (`:8888`, live log aggregation, `docker.sock` ro), **Dockge** (`:5001`,
-    compose-stack management, `docker.sock` rw), **Watchtower** (headless, notify-only image-update
-    alerts). Own compose project + `administration.yml` playbook; added to `site.yml`. Prerequisite:
+    compose-stack management, `docker.sock` rw), **Watchtower** (headless, weekly auto-updater —
+    Saturday 08:00). Own compose project + `administration.yml` playbook; added to `site.yml`. Prerequisite:
     **all stacks consolidated under `/home/stacks/<name>`** (see decisions log) so Dockge sees them
     from one root. Glance gained an **Administration** group (bookmarks + monitor tile) and release
     tracking. No more SSH just to read logs or bounce a stack.
