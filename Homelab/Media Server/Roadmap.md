@@ -19,7 +19,7 @@ stack from home today; these are the "next phase" items — most tied to standin
   |--------|-----------|------------|
   | `uptime.home` | `beelink:3001` | **yes** |
   | `beszel.home` | `beelink:8090` | **yes** |
-  | `jellyfin.home` / `jellyseerr.home` / `sonarr.home` / … | the media-stack ports | as needed |
+  | `jellyfin.home` / `seerr.home` / `sonarr.home` / … | the media-stack ports | as needed |
 - **Tailscale** for remote/5G access. Pairs with OPNsense (which can be the Tailscale subnet
   router). No port-forwarding, no certs needed — the tailnet is encrypted.
 - **AdGuard Home** (optional) — could run then for network-wide ad-blocking + the DNS rewrites,

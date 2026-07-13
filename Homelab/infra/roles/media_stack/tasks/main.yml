@@ -1,4 +1,13 @@
 ---
+- name: Migrate Seerr appdata from the old jellyseerr path (one-time)
+  # Jellyseerr was rebranded to Seerr (Feb 2026). Move the live config/DB to the new
+  # path before anything else so Seerr's auto-migration finds the existing data.
+  # creates+removes make this run only when the old dir exists and the new one does not.
+  ansible.builtin.command:
+    cmd: mv {{ media_stack_appdata }}/jellyseerr {{ media_stack_appdata }}/seerr
+    creates: "{{ media_stack_appdata }}/seerr"
+    removes: "{{ media_stack_appdata }}/jellyseerr"
+
 - name: Create the media-stack directories
   ansible.builtin.file:
     path: "{{ item }}"
@@ -16,7 +25,7 @@
     - "{{ media_stack_appdata }}/radarr"
     - "{{ media_stack_appdata }}/bazarr"
     - "{{ media_stack_appdata }}/jellyfin"
-    - "{{ media_stack_appdata }}/jellyseerr"
+    - "{{ media_stack_appdata }}/seerr"
     - "{{ media_stack_appdata }}/maintainerr"
     - "{{ media_stack_appdata }}/npm"
 
@@ -54,6 +63,17 @@
     owner: "{{ media_owner }}"
     group: "{{ media_group }}"
     mode: "0644"
+
+- name: Ensure Seerr config is owned by its non-root container user (UID/GID 1000)
+  # Seerr runs strictly as the "node" user (1000). The old fallenbagel/jellyseerr
+  # image ran as root, so pre-migration config files are root-owned and unwritable
+  # by Seerr. Recursive + idempotent, so it is safe to leave in on every run.
+  ansible.builtin.file:
+    path: "{{ media_stack_appdata }}/seerr"
+    state: directory
+    owner: "1000"
+    group: "1000"
+    recurse: true
 
 - name: Deploy the media stack
   community.docker.docker_compose_v2:

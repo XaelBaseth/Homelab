@@ -112,15 +112,16 @@ services:
       - ${MEDIA}/media:/data/media
     restart: unless-stopped
 
-  jellyseerr:
-    image: {{ jellyseerr_image }}
-    container_name: jellyseerr
+  seerr:
+    image: {{ seerr_image }}
+    container_name: seerr
+    init: true                        # required by Seerr (runs as non-root node user, UID 1000)
     environment:
       - TZ=${TZ}
     ports:
       - 5055:5055
     volumes:
-      - ${APPDATA}/jellyseerr:/app/config
+      - ${APPDATA}/seerr:/app/config
     restart: unless-stopped
 
   maintainerr:

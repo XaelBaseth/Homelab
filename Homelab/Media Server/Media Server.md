@@ -29,7 +29,7 @@ Internet
    │     ├── gluetun ───VPN(OpenVPN)──▶ CyberGhost (Amsterdam)
    │     │     └── qbittorrent   (network_mode: service:gluetun — ALL traffic via VPN)
    │     ├── prowlarr → sonarr / radarr → bazarr
-   │     ├── jellyfin (/dev/dri Quick Sync) · jellyseerr · maintainerr
+   │     ├── jellyfin (/dev/dri Quick Sync) · seerr · maintainerr
    │     └── npm   (Nginx Proxy Manager — reverse proxy :80/:443, admin :81)
    │
    └── compose project: "dashboard"    (/home/glance)
@@ -56,7 +56,7 @@ on the normal network.
 | **radarr** | Movie automation | 7878 | `radarr/` |
 | **bazarr** | Subtitles | 6767 | `bazarr/` |
 | **jellyfin** | Media server (Quick Sync HW transcode) | 8096 | `jellyfin/` |
-| **jellyseerr** | Request UI | 5055 | `jellyseerr/` |
+| **seerr** | Request UI (formerly Jellyseerr) | 5055 | `seerr/` |
 | **maintainerr** | Rule-based library cleanup | 6246 | `maintainerr/` |
 | **npm** | Reverse proxy (name-based access) | 80/443/81 | `npm/` |
 | **glance** | Dashboard (separate project) | 8280 | `/home/glance/config/glance.yml` |

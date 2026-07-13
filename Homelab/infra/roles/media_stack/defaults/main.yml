@@ -6,6 +6,6 @@ sonarr_image: lscr.io/linuxserver/sonarr:latest
 radarr_image: lscr.io/linuxserver/radarr:latest
 bazarr_image: lscr.io/linuxserver/bazarr:latest
 jellyfin_image: lscr.io/linuxserver/jellyfin:latest
-jellyseerr_image: fallenbagel/jellyseerr:latest
+seerr_image: ghcr.io/seerr-team/seerr:latest  # was fallenbagel/jellyseerr (deprecated Feb 2026)
 maintainerr_image: ghcr.io/maintainerr/maintainerr:latest
 npm_image: jc21/nginx-proxy-manager:latest

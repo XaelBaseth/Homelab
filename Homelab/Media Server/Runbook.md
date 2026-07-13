@@ -125,7 +125,7 @@ accounts are set up once in each UI after the first deploy; the roles only stand
 **First-time setup — monitoring (once, after `ansible-playbook playbooks/monitoring.yml`):**
 
 1. **Uptime Kuma** (`:3001`): create the admin user → Settings → Notifications → add **Discord**
-   (paste `vault_discord_webhook_url`) → add monitors: HTTP for each *arr/Jellyfin/Jellyseerr,
+   (paste `vault_discord_webhook_url`) → add monitors: HTTP for each *arr/Jellyfin/Seerr,
    and **Docker** monitors for `gluetun` + `qbittorrent` (qBittorrent has no port of its own —
    it rides gluetun's network — so a container-level check is the reliable signal). The Docker
    monitors work because the socket is mounted `:ro` into the container.

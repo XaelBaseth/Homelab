@@ -22,7 +22,7 @@ are driven from **Dockge** in the browser; SSH is a last resort when the tooling
 
 ### Decisions locked in
 - **Cleanup:** **Maintainerr** — supports Jellyfin natively (uses Streamystats for watch
-  data + Jellyseerr/Sonarr/Radarr).
+  data + Seerr/Sonarr/Radarr).
 - **VPN:** **gluetun + WireGuard** using a CyberGhost WireGuard config. gluetun *runs* your
   CyberGhost config and adds the kill-switch; only qBittorrent routes through it.
 - **Reverse proxy:** **Nginx Proxy Manager** (GUI, easiest to learn/debug).
@@ -45,7 +45,7 @@ are driven from **Dockge** in the browser; SSH is a last resort when the tooling
 | **sonarr / radarr** | `media` | TV / movies; import from qBit by hardlink |
 | **bazarr** | `media` | Subtitles (optional) |
 | **jellyfin** | `media` + `/dev/dri` | Quick Sync HW transcode; **not** via VPN |
-| **jellyseerr** | `media` | Request UI |
+| **seerr** | `media` | Request UI (formerly Jellyseerr) |
 | **maintainerr** | `media` | Rule-based library cleanup / disk-space |
 | **nginx-proxy-manager** | `proxy` + `media` | Ports 80/81; name-based routing |
 | **glance** | `proxy` | Dashboard linking to each hostname |
@@ -153,10 +153,10 @@ add the next service group.** Add services in this order, verifying each before 
    the download client (host = `gluetun`); keep all paths under `/data`. *Verify:* a test grab
    downloads via the VPN and Sonarr/Radarr **hardlink-imports** it — `ls -i` shows the file in
    `torrents/` and `media/` sharing one inode (no copy).
-3. **Jellyfin + Jellyseerr.** Jellyfin with `/dev/dri` for Quick Sync, libraries on
-   `/data/media`; Jellyseerr connected to Jellyfin + Sonarr/Radarr. *Verify:* a forced
+3. **Jellyfin + Seerr.** Jellyfin with `/dev/dri` for Quick Sync, libraries on
+   `/data/media`; Seerr connected to Jellyfin + Sonarr/Radarr. *Verify:* a forced
    transcode shows **hardware** (QSV) in the Jellyfin dashboard.
-4. **Maintainerr.** Connect to Jellyfin + Jellyseerr + Sonarr/Radarr (+ Streamystats for
+4. **Maintainerr.** Connect to Jellyfin + Seerr + Sonarr/Radarr (+ Streamystats for
    watch-based rules). Preview one rule before enabling deletes.
 5. **NPM + AdGuard.** AdGuard rewrite `*.home` → Beelink IP; router DHCP hands out AdGuard as
    DNS. NPM Proxy Host per service (`jellyfin.home` → `jellyfin:8096`, …). *Verify:* names
@@ -178,7 +178,7 @@ add the next service group.** Add services in this order, verifying each before 
 - **Kill-switch:** qBit's public IP = VPN IP; stopping gluetun kills qBit's net (no leak).
 - **Hardlinks:** same inode in `torrents/` and `media/` after import (no duplication).
 - **HW transcode:** `/dev/dri` in container; Jellyfin dashboard shows QSV on a transcode.
-- **End-to-end:** request in Jellyseerr → qBit downloads via VPN → *arr hardlink-imports →
+- **End-to-end:** request in Seerr → qBit downloads via VPN → *arr hardlink-imports →
   appears in Jellyfin; Maintainerr rule previews correctly.
 - **Access:** `*.home` resolves via AdGuard + loads through NPM on LAN; Tailscale reaches it
   over 5G; Ansible re-run is idempotent.
@@ -258,7 +258,7 @@ add the next service group.** Add services in this order, verifying each before 
     `/data/media/{tv,movies}`, hardlinks on. Prowlarr Apps → Sonarr/Radarr; Bazarr → both.
     Hardlink proof: same inode across `/data/torrents` and `/data/media` inside sonarr.
   - **2.3** ✅ done — Jellyfin (`/dev/dri` + group_add render=992/video=44, QSV verified in
-    container) + Jellyseerr. Full transcode-on-dashboard check pending real media.
+    container) + Seerr. Full transcode-on-dashboard check pending real media.
   - **2.4** ✅ done — Maintainerr (`:6246`, Jellyfin-native) for disk-space rules.
   - **2.5** ✅ done (partial) — **NPM** deployed, proxy hosts for all services (`*.home` →
     container:port; qBittorrent → `gluetun:8080`). **AdGuard deferred to OPNsense** — Livebox
@@ -289,7 +289,7 @@ add the next service group.** Add services in this order, verifying each before 
 
 ## TODO before calling it fully done
 - **Pin all image tags to digests** (one pass) — currently `latest` across the stack.
-- **End-to-end test** once an indexer + a download exist: Jellyseerr request → qBit (via VPN)
+- **End-to-end test** once an indexer + a download exist: Seerr request → qBit (via VPN)
   → Sonarr/Radarr hardlink import → plays in Jellyfin with **HW transcode** confirmed on the
   Jellyfin dashboard.
 
