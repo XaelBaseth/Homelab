@@ -1,0 +1,11 @@
+---
+# The external media drive, pinned by its UNIQUE by-id path (never /dev/sdX, which can move).
+storage_device: /dev/disk/by-id/usb-Seagate_Expansion_HDD_00000000NC18006G-0:0
+storage_partition: "{{ storage_device }}-part1"
+
+storage_mount: /data
+storage_fstype: ext4
+
+# Ownership of the media tree. In Phase 2 the containers' PUID/PGID will match this user.
+media_owner: beelink
+media_group: beelink

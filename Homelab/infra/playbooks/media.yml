@@ -1,0 +1,6 @@
+---
+- name: Deploy the media stack
+  hosts: beelink
+  become: true
+  roles:
+    - media_stack

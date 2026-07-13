@@ -1,0 +1,15 @@
+---
+# Install these with:  ansible-galaxy collection install -r requirements.yml
+# Re-run that command any time you add a collection here.
+collections:
+  # Docker Engine + docker compose management (used by the docker role).
+  - name: community.docker
+    version: ">=3.10.0"
+
+  # General-purpose system modules: timezone, ufw, and many more used in the common role.
+  - name: community.general
+    version: ">=8.0.0"
+
+  # Core POSIX modules: mount/fstab management for the storage role (/data).
+  - name: ansible.posix
+    version: ">=1.5.0"

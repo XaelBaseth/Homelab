@@ -1,0 +1,10 @@
+---
+- name: Provision Beelink media server
+  hosts: beelink
+  become: true
+  roles:
+    - common
+    - storage
+    - docker
+    - media_stack
+    - glance

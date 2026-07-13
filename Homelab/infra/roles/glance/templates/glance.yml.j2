@@ -1,0 +1,45 @@
+pages:
+  - name: Homelab
+    columns:
+      - size: small
+        widgets:
+          - type: server-stats
+            servers:
+              - type: local
+                name: Beelink
+                hide-mountpoints-by-default: true
+                mountpoints:
+                  /mnt/host/data:
+                    name: Media
+                  /mnt/host/home:
+                    name: Apps
+      - size: full
+        widgets:
+          - type: monitor
+            title: Media Stack
+            cache: 1m
+            sites:
+              - title: Jellyfin
+                url: http://{{ vault_beelink_host }}:8096
+                icon: di:jellyfin
+              - title: Jellyseerr
+                url: http://{{ vault_beelink_host }}:5055
+                icon: di:jellyseerr
+              - title: Sonarr
+                url: http://{{ vault_beelink_host }}:8989
+                icon: di:sonarr
+              - title: Radarr
+                url: http://{{ vault_beelink_host }}:7878
+                icon: di:radarr
+              - title: Prowlarr
+                url: http://{{ vault_beelink_host }}:9696
+                icon: di:prowlarr
+              - title: Bazarr
+                url: http://{{ vault_beelink_host }}:6767
+                icon: di:bazarr
+              - title: Maintainerr
+                url: http://{{ vault_beelink_host }}:6246
+                icon: di:maintainerr
+              - title: qBittorrent
+                url: http://{{ vault_beelink_host }}:8080
+                icon: di:qbittorrent

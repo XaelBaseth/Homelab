@@ -1,0 +1,72 @@
+---
+- name: Safety — verify the media drive is present
+  ansible.builtin.stat:
+    path: "{{ storage_device }}"
+  register: _media_disk
+
+- name: Ensure disk tooling is present (parted, mkfs.ext4)
+  ansible.builtin.apt:
+    name:
+      - parted
+      - e2fsprogs
+    state: present
+    update_cache: true
+
+- name: Safety — abort if the media drive is missing or misidentified
+  ansible.builtin.assert:
+    that:
+      - _media_disk.stat.exists
+      - "'usb-Seagate_Expansion' in storage_device"
+    fail_msg: >-
+      Media drive {{ storage_device }} not found (plugged in?) or the id doesn't match the
+      expected external disk. Aborting before touching any disk.
+
+- name: Create a GPT label with a single full-disk partition
+  community.general.parted:
+    device: "{{ storage_device }}"
+    label: gpt
+    number: 1
+    part_start: 0%
+    part_end: 100%
+    state: present
+
+- name: Detect the current filesystem on the media partition
+  ansible.builtin.command: "blkid -s TYPE -o value {{ storage_partition }}"
+  register: _current_fs
+  changed_when: false
+  failed_when: false
+
+- name: Format the partition ext4 (force ONLY when converting from another filesystem)
+  community.general.filesystem:
+    dev: "{{ storage_partition }}"
+    fstype: "{{ storage_fstype }}"
+    force: "{{ (_current_fs.stdout | trim) != storage_fstype }}"
+
+
+- name: Read the new partition's UUID
+  ansible.builtin.command: "blkid -s UUID -o value {{ storage_partition }}"
+  register: _media_uuid
+  changed_when: false
+
+- name: Mount the media drive at {{ storage_mount }} by UUID (persisted to fstab)
+  ansible.posix.mount:
+    path: "{{ storage_mount }}"
+    src: "UUID={{ _media_uuid.stdout }}"
+    fstype: "{{ storage_fstype }}"
+    opts: defaults,nofail
+    state: mounted
+
+- name: Create the media directory tree
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0775"
+  loop:
+    - "{{ storage_mount }}/torrents"
+    - "{{ storage_mount }}/torrents/movies"
+    - "{{ storage_mount }}/torrents/tv"
+    - "{{ storage_mount }}/media"
+    - "{{ storage_mount }}/media/movies"
+    - "{{ storage_mount }}/media/tv"

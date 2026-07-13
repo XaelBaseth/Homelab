@@ -1,0 +1,6 @@
+---
+- name: Deploy the dashboard (Glance)
+  hosts: beelink
+  become: true
+  roles:
+    - glance
