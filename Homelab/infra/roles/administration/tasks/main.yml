@@ -1,0 +1,33 @@
+---
+- name: Create the administration stack directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0755"
+  loop:
+    - "{{ administration_dir }}"
+    - "{{ administration_appdata }}"
+    - "{{ administration_appdata }}/dockge"
+
+- name: Render the stack environment file (Watchtower notification URL from the vault)
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ administration_dir }}/.env"
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0600"
+
+- name: Render the docker-compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ administration_dir }}/docker-compose.yml"
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0644"
+
+- name: Deploy the administration stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ administration_dir }}"
+    state: present

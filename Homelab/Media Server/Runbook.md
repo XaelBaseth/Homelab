@@ -18,18 +18,20 @@ infra/
 │       ├── vars.yml            # non-secret config (PUID/PGID, paths, timezone, local_domain, GPU GIDs)
 │       └── vault.yml           # ENCRYPTED secrets (see below)
 ├── playbooks/
-│   ├── site.yml                # full run: common → storage → docker → media_stack → glance → monitoring
+│   ├── site.yml                # full run: common → storage → docker → media_stack → glance → monitoring → administration
 │   ├── media.yml               # just the media stack (fast iteration)
 │   ├── dashboard.yml           # just Glance
 │   ├── monitoring.yml          # just the monitoring stack (Uptime Kuma + Beszel + heartbeat)
+│   ├── administration.yml      # just the admin stack (Dozzle + Dockge + Watchtower)
 │   └── update.yml              # manual weekly apt upgrade
 └── roles/
-    ├── common/                 # apt base, locale/timezone, SSH hardening (key-only)
+    ├── common/                 # apt base, locale/timezone, SSH hardening (key-only), stacks_root
     ├── storage/                # Seagate → ext4 → /data + media tree
     ├── docker/                 # Docker Engine + compose plugin, data-root on /home
     ├── media_stack/            # the docker-compose stack (templated) + secrets
     ├── glance/                 # the dashboard (separate compose project)
-    └── monitoring/             # Uptime Kuma + Beszel (hub+agent) + healthchecks.io heartbeat cron
+    ├── monitoring/             # Uptime Kuma + Beszel + healthchecks.io cron  (OBSERVE only)
+    └── administration/         # Dozzle (logs) + Dockge (mgmt) + Watchtower (notify)  (ACT on containers)
 ```
 
 ## What's in the vault
@@ -46,6 +48,9 @@ infra/
 - `vault_beszel_agent_token` — Beszel **registration token** (short `xxxx-xxxx-…`); both come from the Add System dialog
 - `vault_github_token` — GitHub PAT (read-only public) for Glance's **App Releases** widget — lifts
   the GitHub API cap from 60→5000 req/hr so the widget stops hitting rate limits after redeploys
+- `vault_watchtower_notification_url` — **optional** shoutrrr URL for Watchtower's update alerts
+  (Discord format `discord://TOKEN@ID`). If unset, Watchtower still runs but only logs to its own
+  container (visible in Dozzle) instead of pinging Discord
 
 Edit secrets:
 ```bash
@@ -69,6 +74,9 @@ ansible-playbook playbooks/dashboard.yml
 # Deploy the monitoring stack (Uptime Kuma + Beszel + heartbeat cron)
 ansible-playbook playbooks/monitoring.yml
 
+# Deploy the administration stack (Dozzle logs + Dockge management + Watchtower notify)
+ansible-playbook playbooks/administration.yml
+
 # Full converge (everything)
 ansible-playbook playbooks/site.yml
 
@@ -86,12 +94,15 @@ ansible-playbook playbooks/update.yml
 `notify` a handler that restarts gluetun + qBittorrent — so a changed key is actually picked up
 (a plain `compose up` does *not* recreate a container just because a mounted file changed).
 
-## Monitoring & alerting
+## Monitoring & Administration (two stacks, on purpose)
 
-Three complementary layers (see [[Roadmap]] for the why). The two on-box tools have **no
-declarative config** — monitors, the Discord webhook, and Beszel's agent key are all set up
-once in each web UI after the first deploy. The `monitoring` role only stands up the containers
-and the heartbeat cron.
+Split by **job, not tool** (see [[Roadmap]] for the why): `monitoring` only **observes** (read-only
+sockets, can't change anything), `administration` **acts on** containers (control + updates). Keeping
+them apart means the observe layer has no power to break anything. All the web-UI tools have **no
+declarative config** — monitors, the Discord webhook, Beszel's agent key, and the Dozzle/Dockge admin
+accounts are set up once in each UI after the first deploy; the roles only stand up the containers.
+
+**`monitoring` stack — observe (`docker.sock` read-only):**
 
 | Tool | URL | Covers |
 |------|-----|--------|
@@ -99,11 +110,19 @@ and the heartbeat cron.
 | Beszel (hub) | `http://<beelink>:8090` | Host + per-container resource metrics **with history** + threshold alerts |
 | healthchecks.io | (SaaS, off-box) | Dead-man's-switch — alerts if the Beelink stops pinging (the only "whole box is dead" alarm) |
 
+**`administration` stack — act (`docker.sock` read-write, except Dozzle):**
+
+| Tool | URL | Covers |
+|------|-----|--------|
+| Dozzle | `http://<beelink>:8888` | **Live log aggregation** across every container (socket `:ro` — reads logs, never controls) |
+| Dockge | `http://<beelink>:5001` | **Compose-stack management** — start/stop/restart/update/edit every stack under `/home/stacks` |
+| Watchtower | (headless) | **Notify-only** image-update checks (daily 08:00) → Discord; never pulls or recreates |
+
 > ⚠️ Uptime Kuma and Beszel both run **on the Beelink they monitor** — if the box dies, they die
 > with it and stay silent. That blind spot is exactly why the off-box healthchecks.io heartbeat
 > exists. Keep alert channels **external** (Discord webhook), not a self-hosted notifier.
 
-**First-time setup (once, after `ansible-playbook playbooks/monitoring.yml`):**
+**First-time setup — monitoring (once, after `ansible-playbook playbooks/monitoring.yml`):**
 
 1. **Uptime Kuma** (`:3001`): create the admin user → Settings → Notifications → add **Discord**
    (paste `vault_discord_webhook_url`) → add monitors: HTTP for each *arr/Jellyfin/Jellyseerr,
@@ -125,6 +144,39 @@ and the heartbeat cron.
 3. **healthchecks.io**: create a check (period 5 min, small grace) → copy its ping URL into
    `vault_healthchecks_ping_url` → add the **Discord** integration on their side → re-run
    `monitoring.yml` to install the cron (`crontab -l` as root shows `healthchecks-heartbeat`).
+
+**First-time setup — administration (once, after `ansible-playbook playbooks/administration.yml`):**
+
+4. **Dozzle** (`:8888`): zero-config — open it and every container's live logs are there, with
+   search and multi-container tail. (No auth by default; fine on the LAN. Add `DOZZLE_AUTH_*`
+   env vars if it's ever exposed beyond the LAN.)
+5. **Dockge** (`:5001`): create the admin user on first open. It lists every stack under
+   `/home/stacks` (`media-stack`, `monitoring`, `glance`, `administration`) and can
+   start/stop/restart/update or edit each. **Ansible stays the source of truth** — treat Dockge for
+   actions (bounce a stack, pull an update, read a stack's logs), not for permanent config edits, or
+   the next role run overwrites them. Anything you want to keep goes back into the role template.
+6. **Watchtower** (headless — nothing to open): runs `WATCHTOWER_MONITOR_ONLY=true`, so it **only
+   reports** newer images, never applies them. To get the Discord pings, set the optional
+   `vault_watchtower_notification_url` (shoutrrr `discord://TOKEN@ID`) and re-run `administration.yml`;
+   without it, the findings just log to Watchtower's own container (readable in Dozzle). When it flags
+   an update, you bump the tag/digest in the role's `defaults` and converge — never let it self-update.
+   > **Image = `nickfedor/watchtower`, not `containrrr/watchtower`.** The original is unmaintained and
+   > its old Docker API client (1.25) crash-loops against modern Engine (`client version 1.25 is too
+   > old`). The `nickfedor` fork is the maintained drop-in.
+   > **Log gotcha:** `notify=no` on the "Update session completed" line is **not** an error — it's an
+   > internal trigger-source flag. A working send shows `channel_status=sent` / `Notification send
+   > completed successfully total_urls=1` just above it. Test the channel with a one-off:
+   > `docker run --rm --env-file /home/stacks/administration/.env -v /var/run/docker.sock:/var/run/docker.sock nickfedor/watchtower:latest --run-once --monitor-only`
+
+**Stacks layout:** all compose projects live under a single `stacks_root` (`/home/stacks/<name>`)
+so Dockge can manage them from one root. Per-service **appdata stays at `/home/<name>/appdata`**
+(live data, referenced by absolute path in `.env`) and is *not* moved. The one-time migration is
+handled by cleanup tasks in each role that drop the old compose files at `/home/<name>/` — safe to
+delete those tasks after the first post-consolidation converge.
+
+**Adding a service to the monitoring stack** mirrors the media-stack flow: image tag in
+`roles/monitoring/defaults/main.yml` → service block in the compose template → any `appdata` dir
+in the tasks loop → `ansible-playbook playbooks/monitoring.yml`.
 
 ## Troubleshooting
 

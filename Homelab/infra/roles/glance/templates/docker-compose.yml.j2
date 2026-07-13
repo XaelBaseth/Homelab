@@ -11,4 +11,5 @@ services:
       - ./assets:/app/assets        # served at /assets/ (custom.css)
       - /data:/mnt/host/data:ro     # media drive, for disk stats
       - /home:/mnt/host/home:ro     # docker + appdata, for disk stats
+      - /var/run/docker.sock:/var/run/docker.sock:ro   # docker-containers widget (live status of every container, incl. headless Watchtower)
     restart: unless-stopped

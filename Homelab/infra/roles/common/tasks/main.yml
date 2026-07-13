@@ -18,6 +18,14 @@
   community.general.timezone:
     name: "{{ common_timezone }}"
 
+- name: Create the shared stacks root (single parent for every compose project)
+  ansible.builtin.file:
+    path: "{{ stacks_root }}"
+    state: directory
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0755"
+
 - name: Harden SSH
   block:
     - name: Deploy SSH hardening drop-in

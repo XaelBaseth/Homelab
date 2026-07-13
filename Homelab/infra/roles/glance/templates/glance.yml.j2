@@ -15,7 +15,7 @@ pages:
             hour-format: 24h
 
           - type: weather
-            location: Paris, France
+            location: Le Havre, France
             units: metric
             hour-format: 24h
 
@@ -23,7 +23,7 @@ pages:
             servers:
               - type: local
                 name: Beelink
-                hide-mountpoints-by-default: true
+                hide-mountpoints-by-default: false
                 mountpoints:
                   /mnt/host/data:
                     name: Media
@@ -35,8 +35,8 @@ pages:
       # phase, swap {{ vault_beelink_host }}:PORT for the *.home names (see Roadmap).
       - size: full
         widgets:
-          - type: split-column   # two bookmark blocks per row instead of one
-            css-class: bookmarks-2col   # forced to 2 cols via custom.css (beats responsive collapse)
+          - type: split-column
+            css-class: bookmarks-2col
             widgets:
               - type: bookmarks
                 groups:
@@ -47,25 +47,6 @@ pages:
                         icon: di:jellyfin
                       - title: Jellyseerr
                         url: http://{{ vault_beelink_host }}:5055
-                        icon: di:jellyseerr
-                      - title: Sonarr
-                        url: http://{{ vault_beelink_host }}:8989
-                        icon: di:sonarr
-                      - title: Radarr
-                        url: http://{{ vault_beelink_host }}:7878
-                        icon: di:radarr
-                      - title: Prowlarr
-                        url: http://{{ vault_beelink_host }}:9696
-                        icon: di:prowlarr
-                      - title: Bazarr
-                        url: http://{{ vault_beelink_host }}:6767
-                        icon: di:bazarr
-                      - title: Maintainerr
-                        url: http://{{ vault_beelink_host }}:6246
-                        icon: di:maintainerr
-                      - title: qBittorrent
-                        url: http://{{ vault_beelink_host }}:8080
-                        icon: di:qbittorrent
               - type: bookmarks
                 groups:
                   - title: Monitoring
@@ -76,13 +57,21 @@ pages:
                       - title: Beszel
                         url: http://{{ vault_beelink_host }}:8090
                         icon: di:beszel
+                  - title: Administration
+                    links:
+                      - title: Dozzle
+                        url: http://{{ vault_beelink_host }}:8888
+                        icon: di:dozzle
+                      - title: Dockge
+                        url: http://{{ vault_beelink_host }}:5001
+                        icon: di:dockge
+                      # Watchtower runs headless (notify-only) — no web UI, so no link
                   - title: Infra
                     links:
                       - title: Nginx Proxy Manager
                         url: http://{{ vault_beelink_host }}:81
                         icon: di:nginx-proxy-manager
 
-      # ── Right: what's new upstream ──
       - size: small
         widgets:
           - type: releases
@@ -103,6 +92,9 @@ pages:
               - qdm12/gluetun
               - louislam/uptime-kuma
               - henrygd/beszel
+              - amir20/dozzle
+              - louislam/dockge
+              - nicholas-fedor/watchtower
               - glanceapp/glance
               - NginxProxyManager/nginx-proxy-manager
 
@@ -153,3 +145,25 @@ pages:
               - title: Beszel
                 url: http://{{ vault_beelink_host }}:8090
                 icon: di:beszel
+
+          - type: monitor
+            title: Administration
+            cache: 1m
+            sites:
+              - title: Dozzle
+                url: http://{{ vault_beelink_host }}:8888
+                icon: di:dozzle
+              - title: Dockge
+                url: http://{{ vault_beelink_host }}:5001
+                icon: di:dockge
+
+  - name: Containers
+    columns:
+      - size: full
+        widgets:
+          # Live run-state of EVERY container (reads docker.sock :ro). This is where headless
+          # Watchtower gets its dashboard presence; per-container display comes from glance.* labels.
+          - type: docker-containers
+            title: Containers
+            cache: 30s
+            hide-by-default: false

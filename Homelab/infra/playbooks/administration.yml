@@ -1,0 +1,6 @@
+---
+- name: Deploy the administration stack (Dozzle logs + Dockge management + Watchtower notify)
+  hosts: beelink
+  become: true
+  roles:
+    - administration

@@ -6,8 +6,9 @@ media_pgid: 1000
 
 # Host paths
 media_root: /data                              # ext4 media drive (from the storage role)
-media_stack_dir: /home/media-stack             # compose + .env live here
-media_stack_appdata: /home/media-stack/appdata # per-service /config bind mounts
+stacks_root: /home/stacks                      # single parent for every compose project (Dockge manages subdirs here)
+media_stack_dir: "{{ stacks_root }}/media-stack" # compose + .env live here
+media_stack_appdata: /home/media-stack/appdata # per-service /config bind mounts (kept in place — live data, not moved)
 media_owner: beelink
 media_group: beelink
 

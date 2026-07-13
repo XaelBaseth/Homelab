@@ -60,3 +60,14 @@
     project_src: "{{ media_stack_dir }}"
     state: present
     remove_orphans: true
+
+- name: Remove stale compose files from the pre-consolidation path (one-time migration)
+  # Project name ("media-stack") is unchanged by the move and APPDATA is read from .env
+  # (still /home/media-stack/appdata), so the deploy above re-adopts the containers untouched.
+  # appdata lives under the old dir, so we clear only the two moved files. Safe to delete after the first apply.
+  ansible.builtin.file:
+    path: "/home/media-stack/{{ item }}"
+    state: absent
+  loop:
+    - docker-compose.yml
+    - .env

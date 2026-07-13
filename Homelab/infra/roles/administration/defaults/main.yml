@@ -1,0 +1,19 @@
+---
+# ── Administration stack: tools that ACT on containers ──
+# (kept separate from `monitoring`, which only *observes* — different job, different blast radius)
+dozzle_image: amir20/dozzle:latest              # live log aggregation across every container
+dockge_image: louislam/dockge:1                 # compose-stack management UI (pinned major, per upstream)
+watchtower_image: nickfedor/watchtower:latest   # image-update NOTIFIER (monitor-only — never pulls/recreates)
+                                                # maintained fork — original containrrr/watchtower is stale and its old
+                                                # Docker API client (1.25) crash-loops against modern Engine (needs >=1.40)
+
+# Host paths (compose under the shared stacks_root; appdata alongside the other stacks)
+administration_dir: "{{ stacks_root }}/administration"
+administration_appdata: /home/administration/appdata
+
+# Published ports
+dozzle_port: 8888
+dockge_port: 5001
+
+# Watchtower notify-only cadence — 6-field cron (incl. seconds): daily 08:00 update check
+watchtower_schedule: "0 0 8 * * *"

@@ -49,3 +49,10 @@
   community.docker.docker_compose_v2:
     project_src: "{{ glance_dir }}"
     state: present
+
+- name: Remove the pre-consolidation Glance dir (one-time migration)
+  # Glance holds no persistent data — config/assets are Ansible-rendered — so the whole
+  # legacy dir is safe to drop. Project name ("glance") is unchanged. Safe to delete after the first apply.
+  ansible.builtin.file:
+    path: /home/glance
+    state: absent

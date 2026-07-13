@@ -1,0 +1,56 @@
+services:
+  dozzle:
+    image: {{ dozzle_image }}
+    container_name: dozzle
+    environment:
+      - TZ=${TZ}
+    ports:
+      - {{ dozzle_port }}:8080
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro   # read-only: Dozzle only tails logs, never controls containers
+    labels:                                            # Glance docker-containers widget presentation
+      - glance.name=Dozzle
+      - glance.icon=di:dozzle
+      - glance.url=http://{{ vault_beelink_host }}:{{ dozzle_port }}
+      - glance.description=Live container logs
+    restart: unless-stopped
+
+  dockge:
+    image: {{ dockge_image }}
+    container_name: dockge
+    environment:
+      - TZ=${TZ}
+      - DOCKGE_STACKS_DIR={{ stacks_root }}            # must equal the host path below — Dockge reads/writes compose files here
+    ports:
+      - {{ dockge_port }}:5001
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock      # rw: Dockge starts/stops/updates stacks (Dozzle's is ro — it can't)
+      - {{ administration_appdata }}/dockge:/app/data
+      - {{ stacks_root }}:{{ stacks_root }}            # stacks bind-mounted at the SAME path in and out (Dockge requirement)
+    labels:
+      - glance.name=Dockge
+      - glance.icon=di:dockge
+      - glance.url=http://{{ vault_beelink_host }}:{{ dockge_port }}
+      - glance.description=Compose stack management
+    restart: unless-stopped
+
+  watchtower:
+    image: {{ watchtower_image }}
+    container_name: watchtower
+    environment:
+      - TZ=${TZ}
+      - WATCHTOWER_MONITOR_ONLY=true                   # NEVER pulls or recreates — Ansible owns the image lifecycle
+      - WATCHTOWER_NO_STARTUP_MESSAGE=true
+      - WATCHTOWER_SCHEDULE={{ watchtower_schedule }}   # 6-field cron (with seconds)
+{% if vault_watchtower_notification_url is defined and vault_watchtower_notification_url | length > 0 %}
+      - WATCHTOWER_NOTIFICATION_URL=${WATCHTOWER_NOTIFICATION_URL}   # shoutrrr Discord URL, e.g. discord://TOKEN@ID
+      - WATCHTOWER_NOTIFICATIONS_LEVEL=info
+{% endif %}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock      # rw: reads image state; monitor-only means it won't act on it
+    labels:                                            # headless — this label set is its only dashboard presence
+      - glance.name=Watchtower
+      - glance.icon=di:watchtower
+      - glance.url=http://{{ vault_beelink_host }}:{{ dozzle_port }}
+      - glance.description=Update notifier (monitor-only) — alerts to Discord; logs in Dozzle
+    restart: unless-stopped

@@ -35,6 +35,17 @@
     project_src: "{{ monitoring_dir }}"
     state: present
 
+- name: Remove stale compose files from the pre-consolidation path (one-time migration)
+  # The compose project name is the dir basename ("monitoring"), unchanged by the move,
+  # so the deploy above re-adopts the running containers. appdata stays at the old path,
+  # so we clear only the two files that actually moved. Safe to delete this task after the first apply.
+  ansible.builtin.file:
+    path: "/home/monitoring/{{ item }}"
+    state: absent
+  loop:
+    - docker-compose.yml
+    - .env
+
 - name: Install the healthchecks.io heartbeat cron (external dead-man's-switch)
   ansible.builtin.cron:
     name: healthchecks-heartbeat

@@ -1,2 +1,2 @@
 glance_image: glanceapp/glance:latest
-glance_dir: /home/glance
+glance_dir: "{{ stacks_root }}/glance"

@@ -17,8 +17,8 @@ Debian + enabling SSH (Phase 0).
 the `docker-compose.yml` yourself so you understand them. You just run them via Ansible
 instead of typing commands over SSH: edit a file locally → re-run the role → verify. Build
 the stack up **incrementally** (one service group at a time, verify, then add the next) so
-any breakage is isolated to the piece you just added. SSH is reserved for reading logs when
-something breaks.
+any breakage is isolated to the piece you just added. Logs are read in **Dozzle** and stacks
+are driven from **Dockge** in the browser; SSH is a last resort when the tooling itself is down.
 
 ### Decisions locked in
 - **Cleanup:** **Maintainerr** — supports Jellyfin natively (uses Streamystats for watch
@@ -213,6 +213,24 @@ add the next service group.** Add services in this order, verifying each before 
   capped at 3×10 MB/container via `daemon.json`.
 - **Storage format guard:** `filesystem` uses `force` only when the disk isn't already ext4
   (`force: "{{ (blkid TYPE) != ext4 }}"`) — never reformats an existing ext4 drive.
+- **Stacks consolidated under `/home/stacks/<name>`** (shared `stacks_root` var) so **Dockge**
+  can manage every compose project from one root. Dir *basenames* are unchanged, so the
+  Compose project name stays the same and running containers are re-adopted (no rebuild).
+  **appdata stays at the old `/home/<name>/appdata` paths** (absolute, referenced via `.env`) —
+  live data is never moved. One-time cleanup tasks drop the stale compose files at the old paths.
+- **`administration` stack ≠ `monitoring` stack.** Split by *job*: monitoring only **observes**
+  (Uptime Kuma, Beszel, healthchecks heartbeat — read-only sockets); administration **acts on**
+  containers (Dockge, Dozzle, Watchtower). Different blast radius, so different stack/role.
+- **Management = Dockge (not Portainer).** Compose-native, points at the stacks it already owns,
+  low risk of a second source of truth fighting Ansible. Needs `docker.sock` **rw** and the
+  stacks dir bind-mounted at the **same path** in/out (`DOCKGE_STACKS_DIR={{ stacks_root }}`).
+- **Log aggregation = Dozzle (not Loki/Grafana).** Single-host, zero-config, `docker.sock` **ro**,
+  live tail across all containers. Loki+Grafana deferred — only worth it for long-term retention.
+- **Watchtower = notify-only (`WATCHTOWER_MONITOR_ONLY=true`).** Auto-update would pull/recreate
+  containers out from under Ansible and break the digest-pinning TODO, so it only Discord-pings
+  (shoutrrr `vault_watchtower_notification_url`, optional) when a newer image exists; the actual
+  update still happens via a role edit + converge. Registry-level signal that complements Glance's
+  GitHub releases widget.
 
 ## Progress log
 - **Phase 0** ✅ done — Debian + SSH + sudo user with key.
@@ -250,8 +268,16 @@ add the next service group.** Add services in this order, verifying each before 
     Health checks hit `beelink-ip:port` (cross-project can't use container names); links use
     `*.home`. Reachable at `beelink-ip:8280`.
   - **2.7 Tailscale — DEFERRED to OPNsense phase.** Using the stack from home (LAN) for now.
-- **Phase 2 COMPLETE for the at-home scope.** Full media stack runs, VPN-protected downloads,
-  hardlink imports, HW transcode, dashboard — all Ansible-managed.
+  - **2.8** ✅ done — **`monitoring` role**: Uptime Kuma (`:3001`, up/down + alerts),
+    Beszel hub + agent (`:8090`, host + per-container metrics), healthchecks.io dead-man's
+    switch (root cron pings out every 5 min). Own compose project + `monitoring.yml` playbook.
+  - **2.9** ✅ done — **new `administration` role/stack** (separate from `monitoring` — observe vs
+    act): **Dozzle** (`:8888`, live log aggregation, `docker.sock` ro), **Dockge** (`:5001`,
+    compose-stack management, `docker.sock` rw), **Watchtower** (headless, notify-only image-update
+    alerts). Own compose project + `administration.yml` playbook; added to `site.yml`. Prerequisite:
+    **all stacks consolidated under `/home/stacks/<name>`** (see decisions log) so Dockge sees them
+    from one root. Glance gained an **Administration** group (bookmarks + monitor tile) and release
+    tracking. No more SSH just to read logs or bounce a stack.
 
 ## Deferred to OPNsense (future)
 - **LAN-wide DNS + `*.home` wildcard resolution** (via Unbound). Until then: per-device DNS
