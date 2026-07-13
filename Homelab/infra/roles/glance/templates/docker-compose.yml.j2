@@ -2,10 +2,13 @@ services:
   glance:
     image: {{ glance_image }}
     container_name: glance
+    env_file:
+      - .env                        # GLANCE_GITHUB_TOKEN for the releases widget
     ports:
       - 8280:8080
     volumes:
       - ./config/glance.yml:/app/config/glance.yml
+      - ./assets:/app/assets        # served at /assets/ (custom.css)
       - /data:/mnt/host/data:ro     # media drive, for disk stats
       - /home:/mnt/host/home:ro     # docker + appdata, for disk stats
     restart: unless-stopped

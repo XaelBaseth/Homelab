@@ -9,6 +9,7 @@
   loop:
     - "{{ glance_dir }}"
     - "{{ glance_dir }}/config"
+    - "{{ glance_dir }}/assets"
 
 - name: Render the Glance config
   ansible.builtin.template:
@@ -17,6 +18,24 @@
     owner: "{{ media_owner }}"
     group: "{{ media_group }}"
     mode: "0644"
+  notify: Restart Glance   # Glance reads config only at startup — a changed file alone won't reload
+
+- name: Render the Glance custom CSS
+  ansible.builtin.template:
+    src: custom.css
+    dest: "{{ glance_dir }}/assets/custom.css"
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0644"
+
+- name: Render the Glance env file (GitHub token from the vault)
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ glance_dir }}/.env"
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0600"
+  notify: Restart Glance
 
 - name: Render the Glance compose file
   ansible.builtin.template:

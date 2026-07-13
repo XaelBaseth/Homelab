@@ -1,0 +1,17 @@
+---
+# ── Monitoring stack images (on :latest, like the rest — pin later) ──
+uptime_kuma_image: louislam/uptime-kuma:latest
+beszel_hub_image: henrygd/beszel:latest
+beszel_agent_image: henrygd/beszel-agent:latest
+
+# Host paths (mirrors the media-stack layout under /home)
+monitoring_dir: /home/monitoring              # compose + .env live here
+monitoring_appdata: /home/monitoring/appdata  # per-service data bind mounts
+
+# Published ports
+uptime_kuma_port: 3001
+beszel_hub_port: 8090
+beszel_agent_port: 45876
+
+# healthchecks.io dead-man's-switch cadence (Beelink pings out every N minutes)
+healthchecks_interval_minutes: 5

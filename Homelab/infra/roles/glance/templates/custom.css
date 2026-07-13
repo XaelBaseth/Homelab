@@ -1,0 +1,10 @@
+/* Force the Home-page bookmarks split-column to always render two columns
+   side by side, overriding Glance's responsive collapse to one column
+   (its inner container is .dynamic-columns). Scoped via the css-class
+   set on that split-column so nothing else on the dashboard is affected. */
+.bookmarks-2col > .dynamic-columns {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr !important;
+  gap: 0 var(--list-gap, 24px);
+  align-items: start;
+}

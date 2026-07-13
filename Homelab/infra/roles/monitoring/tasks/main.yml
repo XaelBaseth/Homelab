@@ -1,0 +1,44 @@
+---
+- name: Create the monitoring stack directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0755"
+  loop:
+    - "{{ monitoring_dir }}"
+    - "{{ monitoring_appdata }}"
+    - "{{ monitoring_appdata }}/uptime-kuma"
+    - "{{ monitoring_appdata }}/beszel"
+    - "{{ monitoring_appdata }}/beszel-agent"
+    - "{{ media_root }}/.beszel"   # empty marker dir so Beszel can report the /data drive's usage
+
+- name: Render the stack environment file (secrets from the vault)
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ monitoring_dir }}/.env"
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0600"
+
+- name: Render the docker-compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ monitoring_dir }}/docker-compose.yml"
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0644"
+
+- name: Deploy the monitoring stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ monitoring_dir }}"
+    state: present
+
+- name: Install the healthchecks.io heartbeat cron (external dead-man's-switch)
+  ansible.builtin.cron:
+    name: healthchecks-heartbeat
+    minute: "*/{{ healthchecks_interval_minutes }}"
+    job: "curl -fsS -m 10 --retry 3 {{ vault_healthchecks_ping_url }} > /dev/null 2>&1"
+    user: root
+  when: vault_healthchecks_ping_url is defined and vault_healthchecks_ping_url | length > 0

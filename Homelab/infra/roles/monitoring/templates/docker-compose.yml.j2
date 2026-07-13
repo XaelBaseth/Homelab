@@ -1,0 +1,39 @@
+services:
+  uptime-kuma:
+    image: {{ uptime_kuma_image }}
+    container_name: uptime-kuma
+    environment:
+      - TZ=${TZ}
+    ports:
+      - {{ uptime_kuma_port }}:3001
+    volumes:
+      - {{ monitoring_appdata }}/uptime-kuma:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro   # enables Docker container monitors (e.g. qbittorrent, behind gluetun)
+    restart: unless-stopped
+
+  beszel:
+    image: {{ beszel_hub_image }}
+    container_name: beszel
+    environment:
+      - TZ=${TZ}
+    ports:
+      - {{ beszel_hub_port }}:8090
+    volumes:
+      - {{ monitoring_appdata }}/beszel:/beszel_data
+    restart: unless-stopped
+
+  beszel-agent:
+    image: {{ beszel_agent_image }}
+    container_name: beszel-agent
+    network_mode: host                                 # host net = accurate host metrics; agent dials OUT to the hub (WebSocket), no inbound needed
+    environment:
+      - TZ=${TZ}
+      - LISTEN={{ beszel_agent_port }}
+      - KEY=${BESZEL_AGENT_KEY}                         # hub's ssh-ed25519 PUBLIC key (NOT the token) — from the Add System dialog
+      - TOKEN=${BESZEL_AGENT_TOKEN}                     # registration token — from the Add System dialog
+      - HUB_URL=http://{{ vault_beelink_host }}:{{ beszel_hub_port }}
+    volumes:
+      - {{ monitoring_appdata }}/beszel-agent:/var/lib/beszel-agent
+      - /var/run/docker.sock:/var/run/docker.sock:ro   # per-container CPU/mem/net stats
+      - {{ media_root }}/.beszel:/extra-filesystems/data:ro   # exposes the /data media drive's usage (empty marker dir — no media files)
+    restart: unless-stopped

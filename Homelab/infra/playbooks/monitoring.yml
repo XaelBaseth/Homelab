@@ -1,0 +1,6 @@
+---
+- name: Deploy the monitoring stack (Uptime Kuma + Beszel + heartbeat)
+  hosts: beelink
+  become: true
+  roles:
+    - monitoring

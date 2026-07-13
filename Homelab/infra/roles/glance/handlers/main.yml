@@ -1,0 +1,4 @@
+---
+- name: Restart Glance
+  ansible.builtin.command: docker restart glance
+  changed_when: true

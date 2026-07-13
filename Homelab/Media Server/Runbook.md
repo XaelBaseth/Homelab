@@ -18,16 +18,18 @@ infra/
 │       ├── vars.yml            # non-secret config (PUID/PGID, paths, timezone, local_domain, GPU GIDs)
 │       └── vault.yml           # ENCRYPTED secrets (see below)
 ├── playbooks/
-│   ├── site.yml                # full run: common → storage → docker → media_stack → glance
+│   ├── site.yml                # full run: common → storage → docker → media_stack → glance → monitoring
 │   ├── media.yml               # just the media stack (fast iteration)
 │   ├── dashboard.yml           # just Glance
+│   ├── monitoring.yml          # just the monitoring stack (Uptime Kuma + Beszel + heartbeat)
 │   └── update.yml              # manual weekly apt upgrade
 └── roles/
     ├── common/                 # apt base, locale/timezone, SSH hardening (key-only)
     ├── storage/                # Seagate → ext4 → /data + media tree
     ├── docker/                 # Docker Engine + compose plugin, data-root on /home
     ├── media_stack/            # the docker-compose stack (templated) + secrets
-    └── glance/                 # the dashboard (separate compose project)
+    ├── glance/                 # the dashboard (separate compose project)
+    └── monitoring/             # Uptime Kuma + Beszel (hub+agent) + healthchecks.io heartbeat cron
 ```
 
 ## What's in the vault
@@ -38,6 +40,12 @@ infra/
 - `vault_cyberghost_user` / `vault_cyberghost_password` — CyberGhost OpenVPN credentials
 - `vault_cyberghost_client_cert` — OpenVPN **client certificate** (PEM, `BEGIN CERTIFICATE`)
 - `vault_cyberghost_client_key` — OpenVPN **client private key** (PEM, `BEGIN PRIVATE KEY`)
+- `vault_discord_webhook_url` — Discord channel webhook for alerts (reference; pasted into each tool's UI)
+- `vault_healthchecks_ping_url` — the `https://hc-ping.com/<uuid>` heartbeat URL (drives the cron)
+- `vault_beszel_agent_key` — Beszel hub's **ssh-ed25519 public key** (the long `ssh-ed25519 AAAA…` value, *not* the token)
+- `vault_beszel_agent_token` — Beszel **registration token** (short `xxxx-xxxx-…`); both come from the Add System dialog
+- `vault_github_token` — GitHub PAT (read-only public) for Glance's **App Releases** widget — lifts
+  the GitHub API cap from 60→5000 req/hr so the widget stops hitting rate limits after redeploys
 
 Edit secrets:
 ```bash
@@ -58,6 +66,9 @@ ansible-playbook playbooks/media.yml
 # Deploy the dashboard
 ansible-playbook playbooks/dashboard.yml
 
+# Deploy the monitoring stack (Uptime Kuma + Beszel + heartbeat cron)
+ansible-playbook playbooks/monitoring.yml
+
 # Full converge (everything)
 ansible-playbook playbooks/site.yml
 
@@ -74,6 +85,46 @@ ansible-playbook playbooks/update.yml
 **Secret changes auto-reload the VPN:** the `env.j2`, `client.crt`, and `client.key` tasks
 `notify` a handler that restarts gluetun + qBittorrent — so a changed key is actually picked up
 (a plain `compose up` does *not* recreate a container just because a mounted file changed).
+
+## Monitoring & alerting
+
+Three complementary layers (see [[Roadmap]] for the why). The two on-box tools have **no
+declarative config** — monitors, the Discord webhook, and Beszel's agent key are all set up
+once in each web UI after the first deploy. The `monitoring` role only stands up the containers
+and the heartbeat cron.
+
+| Tool | URL | Covers |
+|------|-----|--------|
+| Uptime Kuma | `http://<beelink>:3001` | Service/container up-down + alerting (reach-in) |
+| Beszel (hub) | `http://<beelink>:8090` | Host + per-container resource metrics **with history** + threshold alerts |
+| healthchecks.io | (SaaS, off-box) | Dead-man's-switch — alerts if the Beelink stops pinging (the only "whole box is dead" alarm) |
+
+> ⚠️ Uptime Kuma and Beszel both run **on the Beelink they monitor** — if the box dies, they die
+> with it and stay silent. That blind spot is exactly why the off-box healthchecks.io heartbeat
+> exists. Keep alert channels **external** (Discord webhook), not a self-hosted notifier.
+
+**First-time setup (once, after `ansible-playbook playbooks/monitoring.yml`):**
+
+1. **Uptime Kuma** (`:3001`): create the admin user → Settings → Notifications → add **Discord**
+   (paste `vault_discord_webhook_url`) → add monitors: HTTP for each *arr/Jellyfin/Jellyseerr,
+   and **Docker** monitors for `gluetun` + `qbittorrent` (qBittorrent has no port of its own —
+   it rides gluetun's network — so a container-level check is the reliable signal). The Docker
+   monitors work because the socket is mounted `:ro` into the container.
+2. **Beszel bootstrap** (chicken-and-egg — the hub generates the agent credentials):
+   - `:8090` → create user → **Add System**. Host = the Beelink's LAN IP, Port = `45876`.
+   - The dialog's compose snippet shows **two** values — copy **both**: the long
+     `KEY: 'ssh-ed25519 AAAA…'` (→ `vault_beszel_agent_key`) **and** the short
+     `TOKEN: 'xxxx-…'` (→ `vault_beszel_agent_token`). Do **not** put the token in the key field —
+     the agent will crash-loop with `ssh: no key found`.
+   - Do **not** copy the compose or run the binary installer from the dialog — the agent is already
+     deployed by this role; those are just alternative install methods.
+   - `ansible-vault edit inventory/group_vars/all/vault.yml` → set both vars →
+     `ansible-playbook playbooks/monitoring.yml` again. The agent dials out to the hub over
+     WebSocket (`HUB_URL`), so no hub→agent networking to configure; the system goes green. Then
+     add the `discord://TOKEN@ID` notification + a disk-space alert in Beszel.
+3. **healthchecks.io**: create a check (period 5 min, small grace) → copy its ping URL into
+   `vault_healthchecks_ping_url` → add the **Discord** integration on their side → re-run
+   `monitoring.yml` to install the cron (`crontab -l` as root shows `healthchecks-heartbeat`).
 
 ## Troubleshooting
 

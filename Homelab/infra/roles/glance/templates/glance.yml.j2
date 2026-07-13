@@ -1,8 +1,24 @@
+server:
+  assets-path: /app/assets   # served at /assets/ — holds custom.css
+
+theme:
+  custom-css-file: /assets/custom.css
+
 pages:
-  - name: Homelab
+  # ══ Page 1: Home — status, launcher, what's new ══════════════
+  - name: Home
     columns:
+      # ── Left: at-a-glance status ──
       - size: small
         widgets:
+          - type: clock
+            hour-format: 24h
+
+          - type: weather
+            location: Paris, France
+            units: metric
+            hour-format: 24h
+
           - type: server-stats
             servers:
               - type: local
@@ -13,6 +29,86 @@ pages:
                     name: Media
                   /mnt/host/home:
                     name: Apps
+
+      # ── Center: launcher ──
+      # NOTE: links use the Beelink IP:port (works today). At the OPNsense/DNS
+      # phase, swap {{ vault_beelink_host }}:PORT for the *.home names (see Roadmap).
+      - size: full
+        widgets:
+          - type: split-column   # two bookmark blocks per row instead of one
+            css-class: bookmarks-2col   # forced to 2 cols via custom.css (beats responsive collapse)
+            widgets:
+              - type: bookmarks
+                groups:
+                  - title: Media
+                    links:
+                      - title: Jellyfin
+                        url: http://{{ vault_beelink_host }}:8096
+                        icon: di:jellyfin
+                      - title: Jellyseerr
+                        url: http://{{ vault_beelink_host }}:5055
+                        icon: di:jellyseerr
+                      - title: Sonarr
+                        url: http://{{ vault_beelink_host }}:8989
+                        icon: di:sonarr
+                      - title: Radarr
+                        url: http://{{ vault_beelink_host }}:7878
+                        icon: di:radarr
+                      - title: Prowlarr
+                        url: http://{{ vault_beelink_host }}:9696
+                        icon: di:prowlarr
+                      - title: Bazarr
+                        url: http://{{ vault_beelink_host }}:6767
+                        icon: di:bazarr
+                      - title: Maintainerr
+                        url: http://{{ vault_beelink_host }}:6246
+                        icon: di:maintainerr
+                      - title: qBittorrent
+                        url: http://{{ vault_beelink_host }}:8080
+                        icon: di:qbittorrent
+              - type: bookmarks
+                groups:
+                  - title: Monitoring
+                    links:
+                      - title: Uptime Kuma
+                        url: http://{{ vault_beelink_host }}:3001
+                        icon: di:uptime-kuma
+                      - title: Beszel
+                        url: http://{{ vault_beelink_host }}:8090
+                        icon: di:beszel
+                  - title: Infra
+                    links:
+                      - title: Nginx Proxy Manager
+                        url: http://{{ vault_beelink_host }}:81
+                        icon: di:nginx-proxy-manager
+
+      # ── Right: what's new upstream ──
+      - size: small
+        widgets:
+          - type: releases
+            title: App Releases
+            cache: 6h
+{% if vault_github_token is defined and vault_github_token | length > 0 %}
+            token: ${GLANCE_GITHUB_TOKEN}   # 5000 req/hr authenticated vs 60 unauthenticated
+{% endif %}
+            repositories:
+              - jellyfin/jellyfin
+              - fallenbagel/jellyseerr
+              - Sonarr/Sonarr
+              - Radarr/Radarr
+              - Prowlarr/Prowlarr
+              - morpheus65535/bazarr
+              - jorenn92/Maintainerr        # adjust if the repo path 404s
+              - qbittorrent/qBittorrent
+              - qdm12/gluetun
+              - louislam/uptime-kuma
+              - henrygd/beszel
+              - glanceapp/glance
+              - NginxProxyManager/nginx-proxy-manager
+
+  # ══ Page 2: Services — the application stack, health at a glance ══
+  - name: Services
+    columns:
       - size: full
         widgets:
           - type: monitor
@@ -43,3 +139,17 @@ pages:
               - title: qBittorrent
                 url: http://{{ vault_beelink_host }}:8080
                 icon: di:qbittorrent
+
+          - type: monitor
+            title: Infrastructure
+            cache: 1m
+            sites:
+              - title: Nginx Proxy Manager
+                url: http://{{ vault_beelink_host }}:81
+                icon: di:nginx-proxy-manager
+              - title: Uptime Kuma
+                url: http://{{ vault_beelink_host }}:3001
+                icon: di:uptime-kuma
+              - title: Beszel
+                url: http://{{ vault_beelink_host }}:8090
+                icon: di:beszel
