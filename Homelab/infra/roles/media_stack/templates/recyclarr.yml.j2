@@ -1,0 +1,37 @@
+# Managed by Ansible (media_stack role) — do not edit on the host; changes are overwritten.
+# Pushes TRaSH Guides quality profile + custom formats into Sonarr/Radarr.
+# Flavour = FRENCH VOSTFR (original audio, French subtitles — pure VO, single audio track).
+#
+# The v8 "full template" ids live in the config-templates repo's templates.json; recyclarr's
+# `include:` feature is NOT used here (its includes.json ships empty in the pinned template repo).
+# Referencing the quality-profile trash_id below auto-syncs that profile's default custom-format
+# groups (VOSTFR +1000, "Language: Not Original" -10000, HD Bluray/WEB tiers, LQ/x265 penalties…).
+#
+# To switch flavour/resolution later, swap the trash_id for another French profile from:
+#   Radarr: https://trash-guides.info/Radarr/radarr-setup-quality-profiles-french-en/
+#   Sonarr: https://trash-guides.info/Sonarr/sonarr-setup-quality-profiles-french-en/
+#   e.g. french-multi-vo (keeps both audio tracks) or the uhd-… profiles (4K), then re-sync.
+
+radarr:
+  radarr-main:
+    base_url: http://radarr:7878        # same compose network → reachable by service name
+    api_key: !env_var RADARR_API_KEY
+    delete_old_custom_formats: true      # keep Radarr's CFs an exact mirror of the guide
+    quality_definition:
+      type: movie
+    quality_profiles:
+      - trash_id: 1addc08c4232bc2617684d517df15f75   # [French VOSTFR] HD Bluray + WEB (1080p)
+        reset_unmatched_scores:
+          enabled: true
+
+sonarr:
+  sonarr-main:
+    base_url: http://sonarr:8989
+    api_key: !env_var SONARR_API_KEY
+    delete_old_custom_formats: true
+    quality_definition:
+      type: series
+    quality_profiles:
+      - trash_id: b34c968f58433a38e0e690d42a1dc37e   # [French VOSTFR] HD Bluray + WEB (1080p)
+        reset_unmatched_scores:
+          enabled: true

@@ -15,3 +15,7 @@ docker_packages:
 
 # Keep images/containers/volumes on the 414G /home partition, not the ~12G /var.
 docker_data_root: /home/docker
+
+# The containerd snapshotter's content/snapshot store. Its `root` is NOT governed by Docker's
+# data-root — left at the default /var/lib/containerd it fills the tiny 12G /var. Pin it to /home.
+containerd_data_root: /home/containerd

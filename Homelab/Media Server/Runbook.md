@@ -18,8 +18,9 @@ infra/
 │       ├── vars.yml            # non-secret config (PUID/PGID, paths, timezone, local_domain, GPU GIDs)
 │       └── vault.yml           # ENCRYPTED secrets (see below)
 ├── playbooks/
-│   ├── site.yml                # full run: common → storage → docker → media_stack → glance → monitoring → administration
+│   ├── site.yml                # full run: common → storage → docker → media_stack → audiobookshelf → glance → monitoring → administration
 │   ├── media.yml               # just the media stack (fast iteration)
+│   ├── audiobookshelf.yml      # just the Audiobookshelf stack
 │   ├── dashboard.yml           # just Glance
 │   ├── monitoring.yml          # just the monitoring stack (Uptime Kuma + Beszel + heartbeat)
 │   ├── administration.yml      # just the admin stack (Dozzle + Dockge + Watchtower)
@@ -28,7 +29,8 @@ infra/
     ├── common/                 # apt base, locale/timezone, SSH hardening (key-only), stacks_root
     ├── storage/                # Seagate → ext4 → /data + media tree
     ├── docker/                 # Docker Engine + compose plugin, data-root on /home
-    ├── media_stack/            # the docker-compose stack (templated) + secrets
+    ├── media_stack/            # the docker-compose stack (templated) + secrets (incl. LazyLibrarian)
+    ├── audiobookshelf/         # Audiobookshelf server (separate compose project, no secrets)
     ├── glance/                 # the dashboard (separate compose project)
     ├── monitoring/             # Uptime Kuma + Beszel + healthchecks.io cron  (OBSERVE only)
     └── administration/         # Dozzle (logs) + Dockge (mgmt) + Watchtower (notify)  (ACT on containers)
@@ -42,6 +44,9 @@ infra/
 - `vault_cyberghost_user` / `vault_cyberghost_password` — CyberGhost OpenVPN credentials
 - `vault_cyberghost_client_cert` — OpenVPN **client certificate** (PEM, `BEGIN CERTIFICATE`)
 - `vault_cyberghost_client_key` — OpenVPN **client private key** (PEM, `BEGIN PRIVATE KEY`)
+- `vault_sonarr_api_key` / `vault_radarr_api_key` — API keys recyclarr uses to push quality
+  profiles (Sonarr/Radarr → Settings → General → API Key). Optional: if unset the stack still
+  deploys, recyclarr just can't sync until they're filled in (see recyclarr setup below)
 - `vault_discord_webhook_url` — Discord channel webhook for alerts (reference; pasted into each tool's UI)
 - `vault_healthchecks_ping_url` — the `https://hc-ping.com/<uuid>` heartbeat URL (drives the cron)
 - `vault_beszel_agent_key` — Beszel hub's **ssh-ed25519 public key** (the long `ssh-ed25519 AAAA…` value, *not* the token)
@@ -68,6 +73,9 @@ ansible beelink -m ping -b
 # Deploy / re-deploy the media stack after editing a template
 ansible-playbook playbooks/media.yml
 
+# Deploy the Audiobookshelf stack
+ansible-playbook playbooks/audiobookshelf.yml
+
 # Deploy the dashboard
 ansible-playbook playbooks/dashboard.yml
 
@@ -93,6 +101,89 @@ ansible-playbook playbooks/update.yml
 **Secret changes auto-reload the VPN:** the `env.j2`, `client.crt`, and `client.key` tasks
 `notify` a handler that restarts gluetun + qBittorrent — so a changed key is actually picked up
 (a plain `compose up` does *not* recreate a container just because a mounted file changed).
+
+## Recyclarr (VO profiles) & Bazarr (French subs) — first-time setup
+
+Recyclarr syncs TRaSH **French VOSTFR 1080p** profiles (original audio, no dub) into Sonarr/Radarr;
+Bazarr then fetches the French subtitles. Config-as-code lives in the `media_stack` role
+(`recyclarr.yml.j2`); the web tools (Bazarr, and picking the profile in Seerr) are one-time UI steps.
+
+1. **Grab the API keys** → Sonarr `:8989` and Radarr `:7878` → Settings → General → **API Key**.
+2. `ansible-vault edit inventory/group_vars/all/vault.yml` → set `vault_sonarr_api_key` and
+   `vault_radarr_api_key` → `ansible-playbook playbooks/media.yml` (re-renders `.env`, which
+   recreates the recyclarr container with the keys).
+3. **First sync is manual** — recyclarr's cron (`03:00` daily, `recyclarr_cron`) only fires on
+   schedule, never on container start. Push the profiles now:
+   ```bash
+   ansible beelink -m command -a "docker exec recyclarr recyclarr sync" -b
+   ```
+   On success Sonarr gains **Bluray-WEB-1080p (French VOSTFR)** and Radarr **HD Bluray + WEB
+   (French VOSTFR)** under Settings → Profiles, plus their custom formats.
+4. **Point the apps at the new profile** (recyclarr *creates* it, it doesn't *assign* it):
+   - **Seerr** (`:5055`) → Settings → Services → Radarr/Sonarr → set **Default Quality Profile**
+     to the new VOSTFR profile, so every request uses it.
+   - Existing library items keep their old profile — mass-edit them in Radarr/Sonarr (Library →
+     select all → set profile) if you want them re-graded.
+5. **Bazarr** (`:6767`), one-time:
+   - Settings → Languages → add **French**, create a **language profile** (French only, or FR+forced).
+   - Settings → Providers → enable providers (**OpenSubtitles.com** account, Podnapisi, etc.).
+   - Settings → Sonarr → host `sonarr` port `8989` + API key; same for Radarr (`radarr:7878`).
+     Assign the French language profile as the default → Bazarr backfills subs on the library.
+
+> **Switching flavour/resolution later** is a one-line change: swap the profile `trash_id` in
+> `roles/media_stack/templates/recyclarr.yml.j2` (e.g. VOSTFR → `multi-vo` to keep both audio
+> tracks, or a `uhd-…` profile for 4K) → `media.yml` → `docker exec recyclarr recyclarr sync`.
+> Grab trash_ids from the TRaSH **French** quality-profile pages
+> ([Radarr](https://trash-guides.info/Radarr/radarr-setup-quality-profiles-french-en/) ·
+> [Sonarr](https://trash-guides.info/Sonarr/sonarr-setup-quality-profiles-french-en/)).
+> `delete_old_custom_formats: true` keeps the apps an exact mirror of the guide on every sync.
+>
+> **Note on template mechanics:** recyclarr's `include:` feature is *not* used here — the pinned
+> config-templates repo ships an **empty `includes.json`**, so includes resolve to nothing (that
+> was the original "Unable to find include template" failure). Instead we reference the profile's
+> `trash_id` directly, which auto-syncs its default custom-format groups (VOSTFR +1000,
+> "Language: Not Original" −10000, quality tiers, LQ/x265 penalties). Verified working 2026-07-14.
+
+## Audiobooks — LazyLibrarian (grab) + Audiobookshelf (serve)
+
+Acquisition/serving split: **LazyLibrarian** lives in media-stack (coupled to Prowlarr + qBittorrent),
+**Audiobookshelf** is its own stack that just reads the finished files. **They never talk to each other
+directly — they meet at the shared folder `/data/media/audiobooks`** (LazyLibrarian writes it via its
+`${MEDIA}:/data` mount; ABS reads the same host path as `/audiobooks`). No new vault secrets.
+
+Deploy both: `ansible-playbook playbooks/media.yml playbooks/audiobookshelf.yml`.
+
+**LazyLibrarian** (`:5299`), one-time:
+1. **Prowlarr → LazyLibrarian** (indexers). Get LazyLibrarian's API key: LazyLibrarian → Config →
+   **Interface** → *API Key*. Then Prowlarr (`:9696`) → Settings → **Apps** → **+** → **LazyLibrarian**:
+   Prowlarr Server `http://prowlarr:9696`, LazyLibrarian Server `http://lazylibrarian:5299`, paste the
+   API key → Save. Prowlarr syncs its indexers in as Torznab providers (force with **Sync App Indexers**).
+2. **LazyLibrarian → qBittorrent** (Config → **Downloaders** → qBittorrent): tick *Enable*, Host **`gluetun`**,
+   Port **`8080`** (qBittorrent rides gluetun's network — no hostname of its own, same as the *arrs),
+   your qBit WebUI *Username/Password*, **Label** `audiobooks` → **Test** → Save. (Optionally make a qBit
+   category `audiobooks` → save path `/data/torrents/audiobooks` so grabs land tidily.)
+3. **Library + import** (Config → **Processing** → Folders): set the **AudioBook Destination Folder** to
+   `/data/media/audiobooks`. Tick **Keep Original Files** so LazyLibrarian **copies** into the library and
+   the torrent keeps seeding. NB LazyLibrarian imports by copy/move — **not** the *arr hardlink — but
+   audiobooks are small (a few hundred MB) so the copy's extra space is negligible. Then enable audiobook
+   searching (Config → Search / the AudioBook type toggles) and set preferred formats (m4b/mp3).
+4. Add an author or title to monitor → it searches Prowlarr's indexers → qBittorrent grabs (VPN) → the
+   post-processing interval imports it into `/data/media/audiobooks`.
+   > Metadata is the weak spot post-Goodreads; don't sweat LazyLibrarian's — **Audiobookshelf's own
+   > matcher** (Audible providers) fixes covers/descriptions on the serving side once files land.
+
+**Audiobookshelf** (`:13378`), one-time:
+5. Open it → create the admin user → **Add Library** → type **Books** → folder **`/audiobooks`**.
+   > **Enter the CONTAINER path `/audiobooks`, not the host path** `/data/media/audiobooks` — ABS only
+   > sees what's mounted into it, and that mount surfaces as `/audiobooks`. `/audiobooks` *is* the
+   > external drive (`/dev/sdb1`); the host's `/data` does not exist inside the container. Typing the
+   > host path is why the folder looks "missing / internal-disk-only". It scans and serves what
+   > LazyLibrarian imports (empty until the first grab).
+6. Settings → Item Metadata Utils / library settings → enable metadata match (Audible region as needed).
+   Phone/tablet apps point at `http://<beelink>:13378`.
+   > **Perms note:** the ABS image is *not* a PUID/PGID image — its `appdata/{config,metadata}` are
+   > root-owned by design (unlike the LSIO services). The library on `/data` stays `beelink`-owned; ABS
+   > reads it fine and, by default, writes its metadata to `/metadata`, not into the library tree.
 
 ## Monitoring & Administration (two stacks, on purpose)
 
@@ -125,10 +216,13 @@ accounts are set up once in each UI after the first deploy; the roles only stand
 **First-time setup — monitoring (once, after `ansible-playbook playbooks/monitoring.yml`):**
 
 1. **Uptime Kuma** (`:3001`): create the admin user → Settings → Notifications → add **Discord**
-   (paste `vault_discord_webhook_url`) → add monitors: HTTP for each *arr/Jellyfin/Seerr,
-   and **Docker** monitors for `gluetun` + `qbittorrent` (qBittorrent has no port of its own —
-   it rides gluetun's network — so a container-level check is the reliable signal). The Docker
-   monitors work because the socket is mounted `:ro` into the container.
+   (paste `vault_discord_webhook_url`) → add monitors: HTTP for each *arr/Jellyfin/Seerr/**LazyLibrarian**
+   (`:5299`) and **Audiobookshelf** (`:13378/healthcheck`), and **Docker** monitors for `gluetun` +
+   `qbittorrent` (qBittorrent has no port of its own — it rides gluetun's network — so a container-level
+   check is the reliable signal). The Docker monitors work because the socket is mounted `:ro` into the
+   container. Uptime Kuma is a *separate* compose project, so all HTTP monitors use the **Beelink LAN
+   IP:port**, not container names. LazyLibrarian's root returns **303** → keep "Follow Redirect" on
+   (default) or set Accepted Status Codes to `200-399`; Audiobookshelf's `/healthcheck` returns a clean 200.
 2. **Beszel bootstrap** (chicken-and-egg — the hub generates the agent credentials):
    - `:8090` → create user → **Add System**. Host = the Beelink's LAN IP, Port = `45876`.
    - The dialog's compose snippet shows **two** values — copy **both**: the long
@@ -258,5 +352,17 @@ dashboard shows a **hardware** session.
   bind-mounted in (`/data`, `/home` → `/mnt/host/...:ro`) and referenced as mountpoints.
 - **Cross-project container names don't resolve.** Glance (its own project) reaches the media
   services by `beelink-ip:port`, not by container name.
+- **Docker's `data-root` does NOT move the containerd image store.** With the containerd
+  snapshotter (`docker info` → `driver-type: io.containerd.snapshotter.v1`), image layers live at
+  containerd's `root` (default `/var/lib/containerd`, on the **12 GB `/var`**) — *not* under
+  `/home/docker`. It silently filled `/var` and blocked all pulls (Audiobookshelf's pull was the one
+  that hit it). Fixed by pinning `root = /home/containerd` in `/etc/containerd/config.toml` (now in
+  the **docker role**). **One-time migration on an existing box** (the role can't do this safely on
+  its own — a config flip + restart without moving data first breaks every running container): stop
+  `docker.socket docker.service` then `containerd` → `cp -a /var/lib/containerd/. /home/containerd/`
+  (preserves hardlinks + overlay xattrs as root; `rsync` wasn't installed and `apt` can't run with
+  `/var` full) → write the config → start `containerd` then `docker` → verify `containerd config dump
+  | grep root` and `docker ps` count → then `rm -rf /var/lib/containerd/*`. Done 2026-07-14; `/var`
+  100% → 4%. Fresh installs get it right from the role before the first pull, no migration needed.
 
 See [[Roadmap]] for what's intentionally left for the OPNsense phase.

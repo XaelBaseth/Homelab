@@ -25,6 +25,30 @@
     state: present
     update_cache: true
 
+- name: Ensure the containerd data root exists on /home
+  ansible.builtin.file:
+    path: "{{ containerd_data_root }}"
+    state: directory
+    mode: "0711"
+
+- name: Point containerd's store at /home (keeps image layers off the 12G /var)
+  # Docker's data-root does NOT relocate the containerd snapshotter store — only this `root` does.
+  # On a fresh host this applies before any image is pulled. On an EXISTING host with data already
+  # on /var, the store must be COPIED to /home before containerd restarts on the new root, or running
+  # containers lose their rootfs — that one-time move is a documented manual step (see Runbook gotchas).
+  ansible.builtin.copy:
+    dest: /etc/containerd/config.toml
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (docker role). The Docker containerd; CRI disabled (Docker does not use it).
+      disabled_plugins = ["cri"]
+      root = "{{ containerd_data_root }}"
+  notify:
+    - Restart containerd
+    - Restart docker
+
 - name: Configure the Docker daemon (data-root + log rotation)
   ansible.builtin.copy:
     dest: /etc/docker/daemon.json

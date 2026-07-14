@@ -48,6 +48,9 @@ pages:
                       - title: Seerr
                         url: http://{{ vault_beelink_host }}:5055
                         icon: di:seerr
+                      - title: Audiobookshelf
+                        url: http://{{ vault_beelink_host }}:13378
+                        icon: di:audiobookshelf
               - type: bookmarks
                 groups:
                   - title: Monitoring
@@ -88,6 +91,9 @@ pages:
               - Radarr/Radarr
               - Prowlarr/Prowlarr
               - morpheus65535/bazarr
+              - recyclarr/recyclarr
+              - advplyr/audiobookshelf
+              # LazyLibrarian is GitLab-hosted (no GitHub releases) → not trackable by this widget
               - jorenn92/Maintainerr        # adjust if the repo path 404s
               - qbittorrent/qBittorrent
               - qdm12/gluetun
@@ -126,6 +132,12 @@ pages:
               - title: Bazarr
                 url: http://{{ vault_beelink_host }}:6767
                 icon: di:bazarr
+              - title: LazyLibrarian
+                url: http://{{ vault_beelink_host }}:5299
+                icon: di:lazylibrarian
+              - title: Audiobookshelf
+                url: http://{{ vault_beelink_host }}:13378
+                icon: di:audiobookshelf
               - title: Maintainerr
                 url: http://{{ vault_beelink_host }}:6246
                 icon: di:maintainerr

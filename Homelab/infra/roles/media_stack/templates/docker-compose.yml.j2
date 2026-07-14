@@ -93,6 +93,38 @@ services:
       - ${MEDIA}:/data
     restart: unless-stopped
 
+  lazylibrarian:
+    image: {{ lazylibrarian_image }}
+    container_name: lazylibrarian
+    environment:
+      - PUID=${PUID}
+      - PGID=${PGID}
+      - TZ=${TZ}
+    ports:
+      - 5299:5299
+    volumes:
+      - ${APPDATA}/lazylibrarian:/config
+      - ${MEDIA}:/data                   # whole /data mounted so imports hardlink (same as the *arrs)
+    restart: unless-stopped
+    # Talks to prowlarr:9696 (indexers) and qBittorrent via the VPN container at gluetun:8080.
+    # Not itself behind the VPN — it only hands torrents to qBittorrent, which already is.
+
+  recyclarr:
+    image: {{ recyclarr_image }}
+    container_name: recyclarr
+    user: "${PUID}:${PGID}"           # image is rootless; PUID/PGID env are NOT supported — set the uid here
+    depends_on:
+      - sonarr                        # ordering only; recyclarr retries on its cron if they're not up yet
+      - radarr
+    environment:
+      - TZ=${TZ}
+      - CRON_SCHEDULE=${RECYCLARR_CRON}
+      - SONARR_API_KEY=${SONARR_API_KEY}   # referenced as !env_var in recyclarr.yml
+      - RADARR_API_KEY=${RADARR_API_KEY}
+    volumes:
+      - ${APPDATA}/recyclarr:/config
+    restart: unless-stopped
+
   jellyfin:
     image: {{ jellyfin_image }}
     container_name: jellyfin

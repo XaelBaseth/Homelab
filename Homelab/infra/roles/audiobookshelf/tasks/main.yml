@@ -1,0 +1,30 @@
+---
+# Audiobookshelf — standalone audiobook/podcast SERVER, its own compose project (no coupling to
+# the media-stack pipeline). It only READS finished audiobooks from /data/media/audiobooks, which
+# LazyLibrarian (in media-stack) fills by hardlink. See [[Media Server]] for the acquisition/serving split.
+
+- name: Create the Audiobookshelf stack + appdata directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0755"
+  loop:
+    - "{{ audiobookshelf_dir }}"
+    - "{{ audiobookshelf_appdata }}"
+    - "{{ audiobookshelf_appdata }}/config"
+    - "{{ audiobookshelf_appdata }}/metadata"
+
+- name: Render the Audiobookshelf compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ audiobookshelf_dir }}/docker-compose.yml"
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0644"
+
+- name: Deploy Audiobookshelf
+  community.docker.docker_compose_v2:
+    project_src: "{{ audiobookshelf_dir }}"
+    state: present

@@ -1,4 +1,11 @@
 ---
+# Defined before "Restart docker" so a config change that touches both restarts containerd FIRST,
+# then docker (docker depends on containerd and must reconnect after it bounces).
+- name: Restart containerd
+  ansible.builtin.systemd:
+    name: containerd
+    state: restarted
+
 - name: Restart docker
   ansible.builtin.systemd:
     name: docker

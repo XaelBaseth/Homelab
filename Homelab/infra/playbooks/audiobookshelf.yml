@@ -1,0 +1,6 @@
+---
+- name: Deploy Audiobookshelf (standalone stack)
+  hosts: beelink
+  become: true
+  roles:
+    - audiobookshelf
