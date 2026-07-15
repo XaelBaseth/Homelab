@@ -18,9 +18,8 @@ infra/
 │       ├── vars.yml            # non-secret config (PUID/PGID, paths, timezone, local_domain, GPU GIDs)
 │       └── vault.yml           # ENCRYPTED secrets (see below)
 ├── playbooks/
-│   ├── site.yml                # full run: common → storage → docker → media_stack → audiobookshelf → glance → monitoring → administration
+│   ├── site.yml                # full run: common → storage → docker → media_stack → glance → monitoring → administration
 │   ├── media.yml               # just the media stack (fast iteration)
-│   ├── audiobookshelf.yml      # just the Audiobookshelf stack
 │   ├── dashboard.yml           # just Glance
 │   ├── monitoring.yml          # just the monitoring stack (Uptime Kuma + Beszel + heartbeat)
 │   ├── administration.yml      # just the admin stack (Dozzle + Dockge + Watchtower)
@@ -29,8 +28,7 @@ infra/
     ├── common/                 # apt base, locale/timezone, SSH hardening (key-only), stacks_root
     ├── storage/                # Seagate → ext4 → /data + media tree
     ├── docker/                 # Docker Engine + compose plugin, data-root on /home
-    ├── media_stack/            # the docker-compose stack (templated) + secrets (incl. LazyLibrarian)
-    ├── audiobookshelf/         # Audiobookshelf server (separate compose project, no secrets)
+    ├── media_stack/            # the docker-compose stack (templated) + secrets
     ├── glance/                 # the dashboard (separate compose project)
     ├── monitoring/             # Uptime Kuma + Beszel + healthchecks.io cron  (OBSERVE only)
     └── administration/         # Dozzle (logs) + Dockge (mgmt) + Watchtower (notify)  (ACT on containers)
@@ -73,9 +71,6 @@ ansible beelink -m ping -b
 # Deploy / re-deploy the media stack after editing a template
 ansible-playbook playbooks/media.yml
 
-# Deploy the Audiobookshelf stack
-ansible-playbook playbooks/audiobookshelf.yml
-
 # Deploy the dashboard
 ansible-playbook playbooks/dashboard.yml
 
@@ -84,6 +79,9 @@ ansible-playbook playbooks/monitoring.yml
 
 # Deploy the administration stack (Dozzle logs + Dockge management + Watchtower notify)
 ansible-playbook playbooks/administration.yml
+
+# Deploy AdGuard Home (DNS ad-blocking + *.home names) — first run needs the wizard, see below
+ansible-playbook playbooks/adguard.yml
 
 # Full converge (everything)
 ansible-playbook playbooks/site.yml
@@ -101,6 +99,118 @@ ansible-playbook playbooks/update.yml
 **Secret changes auto-reload the VPN:** the `env.j2`, `client.crt`, and `client.key` tasks
 `notify` a handler that restarts gluetun + qBittorrent — so a changed key is actually picked up
 (a plain `compose up` does *not* recreate a container just because a mounted file changed).
+
+## AdGuard Home — first-time setup (from the Livebox to blocking)
+
+Network-wide DNS ad/tracker/malware blocking + local `*.home` names. The Ansible role deploys the
+container; the rest is a one-time wizard. **Rollout is per-device** — the Orange Livebox can't
+distribute a DNS server, so you point each device at the Beelink by hand (fully reversible; all of
+this carries over to OPNsense later). See [[Roadmap]] for the LAN-wide escalation path.
+
+**Do the steps in this order.** The first-run **wizard is a small mandatory gate** (ports + login
+only) — you can't reach Settings until it's done. All the real config comes *after* it, in the
+dashboard. Point your devices at AdGuard **last**, so blocking + `*.home` already work before
+anything uses it.
+
+1. **Deploy:** `ansible-playbook playbooks/adguard.yml`. DNS binds `:53` on the Beelink's LAN IP
+   (dodges the systemd-resolved stub on `127.0.0.53` — no host change). Admin is on `:3000`
+   because NPM owns `:80`.
+2. **Wizard (minimal — just get to the dashboard)** → browse `http://<beelink-ip>:3000`:
+   - Admin web interface: keep **port 3000**. DNS server: **port 53**. Create the admin login.
+   - On the **"Configure your devices / Router"** screen — that's **instructions only**. We do
+     per-device (and the Livebox can't set router DNS anyway), so **click straight through to
+     "Open Dashboard" — do NOT set up any router here.**
+3. **Upstream DNS (post-wizard, in Settings — the wizard does *not* ask for this)** →
+   *Settings → DNS settings* → Upstream DNS = `https://dns.quad9.net/dns-query` (DoH — encrypted,
+   free malware filter); mode **Parallel/fastest**; **Bootstrap** = `9.9.9.9`. *Apply* + *Test*.
+4. **Blocklists** → *Filters → DNS blocklists*: keep the default *AdGuard DNS filter*, then **Add
+   blocklist → OISD Full** (`https://big.oisd.nl`). Confirm both are enabled.
+5. **Local names** → *Filters → DNS rewrites* → add `*.home` → `<beelink-ip>`. This makes every
+   NPM proxy host (`jellyfin.home`, `uptime.home`, …) resolve — the DNS half the Livebox couldn't do.
+6. **Point your devices LAST** → set DNS = `<beelink-ip>` on the workstation and phone (Livebox
+   DHCP untouched). Watch *Query Log* light up — that's the "it works" moment.
+7. **(Optional, now unblocked)** create the NPM proxy hosts from the [[Roadmap]] table in the NPM
+   UI (`:81`) — remember **Websockets** on `uptime.home` / `beszel.home`.
+
+**Verify:**
+```bash
+curl -sI http://<beelink-ip>:3000 | head -1     # admin UI: expect 200/302
+dig @<beelink-ip> example.com +short            # real A record
+dig @<beelink-ip> doubleclick.net +short        # blocked → 0.0.0.0 (or empty/NXDOMAIN)
+dig @<beelink-ip> jellyfin.home +short          # → <beelink-ip> (after the *.home rewrite)
+```
+
+### Pointing a device at AdGuard (per-OS)
+
+"Pointing a device" = replacing the Livebox (`192.168.1.1`) with the Beelink (`192.168.1.19`) as
+that device's DNS. Do it one device at a time. Include the **secondary** for the failsafe below.
+
+- **Linux (NetworkManager):** `nmcli -t -f NAME connection show --active` to get the name, then
+  ```bash
+  nmcli connection modify "<NAME>" ipv4.dns "192.168.1.19 192.168.1.1" ipv4.ignore-auto-dns yes
+  nmcli connection modify "<NAME>" ipv6.ignore-auto-dns yes ipv6.dns ""   # or ads leak over IPv6
+  nmcli connection up "<NAME>"
+  ```
+  Undo: `ipv4.dns "" ipv4.ignore-auto-dns no ipv6.ignore-auto-dns no`, then `connection up`.
+- **Windows 11:** Settings → **Network & internet** → Wi-Fi (or Ethernet) → click the connection →
+  **DNS server assignment → Edit → Manual** → toggle **IPv4 on** → Preferred `192.168.1.19`,
+  Alternate `192.168.1.1` → Save.
+  **IPv6 must also be handled** or Windows leaks DNS over IPv6 (AdGuard listens on IPv4 only). Do
+  **not** use the Livebox's IPv6 DNS — it's link-local/dynamic and Windows rejects it. Instead
+  toggle **IPv6 on** and set a *fixed filtering* resolver — **AdGuard Public DNS** Preferred
+  `2a10:50c0::ad1:ff`, Alternate `2a10:50c0::ad2:ff` (keeps IPv6 + still blocks ads). *Simpler
+  alternative:* disable IPv6 on the adapter entirely (adapter Properties → uncheck *Internet
+  Protocol Version 6*) so only IPv4 → AdGuard is used — at the cost of IPv6 connectivity.
+  *(CLI equivalent, admin PowerShell: `netsh interface ip set dns name="Wi-Fi" static 192.168.1.19`
+  then `netsh interface ip add dns name="Wi-Fi" 192.168.1.1 index=2`.)*
+- **iOS:** Settings → Wi-Fi → **ⓘ** → **Configure DNS → Manual** → remove existing, Add
+  `192.168.1.19`, then Add `192.168.1.1` → Save.
+- **Android:** long-press the Wi-Fi network → **Modify → Advanced → IP settings → Static** →
+  **DNS 1 = `192.168.1.19`**, **DNS 2 = `192.168.1.1`** (leave **Private DNS = Off** — it only
+  takes a DoT hostname, not a LAN IP).
+
+**Confirm** on any device: an ad domain returns `0.0.0.0` and `jellyfin.home` returns
+`192.168.1.19`; the AdGuard **Query Log** shows that client's requests.
+
+### Failsafe / resilience — add a secondary DNS
+
+Single-host DNS is a single point of failure: if the Beelink is down (reboot, `update.yml`, power),
+a device with *only* `192.168.1.19` loses name resolution. The fix is the **secondary DNS** already
+shown above (`192.168.1.19` **first**, `192.168.1.1` second) — on failure the device falls back to
+the Livebox and keeps working.
+
+- The container self-heals (`restart: unless-stopped`), so the realistic outage is the **whole box**
+  down, not AdGuard crashing — the fallback mainly covers reboots/OS updates.
+- **Tradeoff:** while failed over to the Livebox, that traffic is **unfiltered** and `*.home` names
+  won't resolve (use `192.168.1.19:port`).
+- ⚠️ **`*.home` names vs a secondary DNS (the big gotcha).** `*.home` exists *only* on our AdGuard;
+  every other resolver (Livebox, Quad9, **AdGuard-public IPv6** `2a10:50c0::ad1:ff`) answers
+  **NXDOMAIN** for it. **Linux/systemd-resolved** sticks to the primary so `.home` works — but
+  **Windows (prefers IPv6) and Android** happily query the secondary/IPv6 resolver *even while
+  AdGuard is up*, accept that NXDOMAIN, and the local name fails. So on those devices you can't have
+  both cleanly: **AdGuard as the *sole* DNS → reliable `.home` but no failsafe**, or **AdGuard +
+  secondary → failsafe but `.home` breaks** (reach services via `192.168.1.19:port` there). On
+  Windows specifically, the usual fix is to **disable IPv6 on the adapter** (or drop the IPv6 DNS),
+  then `ipconfig /flushdns`. Diagnose with `nslookup jellyfin.home 192.168.1.19` (always works —
+  forces AdGuard) vs `nslookup jellyfin.home` (uses the system resolver — reveals the wrong one).
+- Prefer **`9.9.9.9` (Quad9)** as the secondary instead of the Livebox if you want the degraded
+  state to still block malware and hide lookups from Orange.
+- **Proper HA comes with OPNsense:** two filtering resolvers (AdGuard on OPNsense + this one, or
+  AdGuard + Unbound) handed out by DHCP — a Beelink outage becomes invisible *and* nothing leaks,
+  and both know the `.home` zone so local names keep working on every OS. See [[Roadmap]].
+
+**Current choice (until OPNsense):** *keep the failsafe on every device* (secondary DNS =
+`192.168.1.1`) — a Beelink reboot must never look like "internet is broken". The accepted cost is
+that `.home` names aren't reliable on Windows/Android; that's fine because we **don't rely on them**
+— use the **Glance dashboard as the launcher** (`http://192.168.1.19:8280`, whose links are already
+`IP:port`, so they work on every device regardless of DNS). Clean `.home` everywhere returns at the
+OPNsense phase.
+
+> **If the container won't bind `:53`** (rare — only if resolved is grabbing the LAN IP): add a
+> `/etc/systemd/resolved.conf.d/` drop-in with `DNSStubListener=no`, and repoint the host's
+> `/etc/resolv.conf` at an **upstream** (`9.9.9.9`) — *never* at AdGuard itself, so the host never
+> depends on its own container. Then re-run the playbook. (Move this into the `adguard` role if it
+> ever becomes necessary — it isn't today.)
 
 ## Recyclarr (VO profiles) & Bazarr (French subs) — first-time setup
 
@@ -144,47 +254,6 @@ Bazarr then fetches the French subtitles. Config-as-code lives in the `media_sta
 > `trash_id` directly, which auto-syncs its default custom-format groups (VOSTFR +1000,
 > "Language: Not Original" −10000, quality tiers, LQ/x265 penalties). Verified working 2026-07-14.
 
-## Audiobooks — LazyLibrarian (grab) + Audiobookshelf (serve)
-
-Acquisition/serving split: **LazyLibrarian** lives in media-stack (coupled to Prowlarr + qBittorrent),
-**Audiobookshelf** is its own stack that just reads the finished files. **They never talk to each other
-directly — they meet at the shared folder `/data/media/audiobooks`** (LazyLibrarian writes it via its
-`${MEDIA}:/data` mount; ABS reads the same host path as `/audiobooks`). No new vault secrets.
-
-Deploy both: `ansible-playbook playbooks/media.yml playbooks/audiobookshelf.yml`.
-
-**LazyLibrarian** (`:5299`), one-time:
-1. **Prowlarr → LazyLibrarian** (indexers). Get LazyLibrarian's API key: LazyLibrarian → Config →
-   **Interface** → *API Key*. Then Prowlarr (`:9696`) → Settings → **Apps** → **+** → **LazyLibrarian**:
-   Prowlarr Server `http://prowlarr:9696`, LazyLibrarian Server `http://lazylibrarian:5299`, paste the
-   API key → Save. Prowlarr syncs its indexers in as Torznab providers (force with **Sync App Indexers**).
-2. **LazyLibrarian → qBittorrent** (Config → **Downloaders** → qBittorrent): tick *Enable*, Host **`gluetun`**,
-   Port **`8080`** (qBittorrent rides gluetun's network — no hostname of its own, same as the *arrs),
-   your qBit WebUI *Username/Password*, **Label** `audiobooks` → **Test** → Save. (Optionally make a qBit
-   category `audiobooks` → save path `/data/torrents/audiobooks` so grabs land tidily.)
-3. **Library + import** (Config → **Processing** → Folders): set the **AudioBook Destination Folder** to
-   `/data/media/audiobooks`. Tick **Keep Original Files** so LazyLibrarian **copies** into the library and
-   the torrent keeps seeding. NB LazyLibrarian imports by copy/move — **not** the *arr hardlink — but
-   audiobooks are small (a few hundred MB) so the copy's extra space is negligible. Then enable audiobook
-   searching (Config → Search / the AudioBook type toggles) and set preferred formats (m4b/mp3).
-4. Add an author or title to monitor → it searches Prowlarr's indexers → qBittorrent grabs (VPN) → the
-   post-processing interval imports it into `/data/media/audiobooks`.
-   > Metadata is the weak spot post-Goodreads; don't sweat LazyLibrarian's — **Audiobookshelf's own
-   > matcher** (Audible providers) fixes covers/descriptions on the serving side once files land.
-
-**Audiobookshelf** (`:13378`), one-time:
-5. Open it → create the admin user → **Add Library** → type **Books** → folder **`/audiobooks`**.
-   > **Enter the CONTAINER path `/audiobooks`, not the host path** `/data/media/audiobooks` — ABS only
-   > sees what's mounted into it, and that mount surfaces as `/audiobooks`. `/audiobooks` *is* the
-   > external drive (`/dev/sdb1`); the host's `/data` does not exist inside the container. Typing the
-   > host path is why the folder looks "missing / internal-disk-only". It scans and serves what
-   > LazyLibrarian imports (empty until the first grab).
-6. Settings → Item Metadata Utils / library settings → enable metadata match (Audible region as needed).
-   Phone/tablet apps point at `http://<beelink>:13378`.
-   > **Perms note:** the ABS image is *not* a PUID/PGID image — its `appdata/{config,metadata}` are
-   > root-owned by design (unlike the LSIO services). The library on `/data` stays `beelink`-owned; ABS
-   > reads it fine and, by default, writes its metadata to `/metadata`, not into the library tree.
-
 ## Monitoring & Administration (two stacks, on purpose)
 
 Split by **job, not tool** (see [[Roadmap]] for the why): `monitoring` only **observes** (read-only
@@ -216,13 +285,11 @@ accounts are set up once in each UI after the first deploy; the roles only stand
 **First-time setup — monitoring (once, after `ansible-playbook playbooks/monitoring.yml`):**
 
 1. **Uptime Kuma** (`:3001`): create the admin user → Settings → Notifications → add **Discord**
-   (paste `vault_discord_webhook_url`) → add monitors: HTTP for each *arr/Jellyfin/Seerr/**LazyLibrarian**
-   (`:5299`) and **Audiobookshelf** (`:13378/healthcheck`), and **Docker** monitors for `gluetun` +
-   `qbittorrent` (qBittorrent has no port of its own — it rides gluetun's network — so a container-level
-   check is the reliable signal). The Docker monitors work because the socket is mounted `:ro` into the
-   container. Uptime Kuma is a *separate* compose project, so all HTTP monitors use the **Beelink LAN
-   IP:port**, not container names. LazyLibrarian's root returns **303** → keep "Follow Redirect" on
-   (default) or set Accepted Status Codes to `200-399`; Audiobookshelf's `/healthcheck` returns a clean 200.
+   (paste `vault_discord_webhook_url`) → add monitors: HTTP for each *arr/Jellyfin/Seerr, and **Docker**
+   monitors for `gluetun` + `qbittorrent` (qBittorrent has no port of its own — it rides gluetun's network
+   — so a container-level check is the reliable signal). The Docker monitors work because the socket is
+   mounted `:ro` into the container. Uptime Kuma is a *separate* compose project, so all HTTP monitors use
+   the **Beelink LAN IP:port**, not container names.
 2. **Beszel bootstrap** (chicken-and-egg — the hub generates the agent credentials):
    - `:8090` → create user → **Add System**. Host = the Beelink's LAN IP, Port = `45876`.
    - The dialog's compose snippet shows **two** values — copy **both**: the long
@@ -355,7 +422,7 @@ dashboard shows a **hardware** session.
 - **Docker's `data-root` does NOT move the containerd image store.** With the containerd
   snapshotter (`docker info` → `driver-type: io.containerd.snapshotter.v1`), image layers live at
   containerd's `root` (default `/var/lib/containerd`, on the **12 GB `/var`**) — *not* under
-  `/home/docker`. It silently filled `/var` and blocked all pulls (Audiobookshelf's pull was the one
+  `/home/docker`. It silently filled `/var` and blocked all pulls (a large image pull was the one
   that hit it). Fixed by pinning `root = /home/containerd` in `/etc/containerd/config.toml` (now in
   the **docker role**). **One-time migration on an existing box** (the role can't do this safely on
   its own — a config flip + restart without moving data first breaks every running container): stop

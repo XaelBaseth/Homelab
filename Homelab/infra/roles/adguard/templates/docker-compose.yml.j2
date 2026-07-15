@@ -1,0 +1,16 @@
+services:
+  adguard:
+    image: {{ adguard_image }}
+    container_name: adguard
+    ports:
+      # DNS bound to the Beelink's LAN IP only, so it never collides with the Debian
+      # systemd-resolved stub on 127.0.0.53:53 — no host DNS surgery for the per-device phase.
+      # If :53 ever fails to bind, disable the stub (DNSStubListener=no) and repoint the host's
+      # /etc/resolv.conf at an UPSTREAM (e.g. 9.9.9.9), never at AdGuard itself. See the Runbook.
+      - "{{ vault_beelink_host }}:53:53/tcp"
+      - "{{ vault_beelink_host }}:53:53/udp"
+      - "{{ adguard_web_port }}:3000/tcp"   # setup wizard + admin UI (keep admin on 3000)
+    volumes:
+      - {{ adguard_appdata }}/work:/opt/adguardhome/work
+      - {{ adguard_appdata }}/conf:/opt/adguardhome/conf
+    restart: unless-stopped

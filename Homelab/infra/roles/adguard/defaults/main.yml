@@ -1,0 +1,11 @@
+---
+# ── AdGuard Home: network-wide DNS ad/tracker/malware blocking + local *.home names ──
+# Configured through its own web UI (persists to conf/) — no secrets to template here.
+adguard_image: adguard/adguardhome:latest
+
+# Host paths (compose under the shared stacks_root; appdata alongside the other stacks)
+adguard_dir: "{{ stacks_root }}/adguard"
+adguard_appdata: /home/adguard/appdata
+
+# Admin UI port — 80 is taken by NPM, so keep AdGuard's admin on 3000 (setup + running).
+adguard_web_port: 3000

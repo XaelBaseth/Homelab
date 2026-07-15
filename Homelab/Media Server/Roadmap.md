@@ -7,10 +7,12 @@ stack from home today; these are the "next phase" items — most tied to standin
 
 ## Deferred to the OPNsense phase
 
-- **LAN-wide DNS + `*.home` names.** The Orange Livebox won't distribute a custom DNS server,
-  so name-based access is on hold. OPNsense's **Unbound** will resolve `*.home` → Beelink IP
-  (wildcard/host overrides), and then NPM's proxy hosts light up for every device.
-  *Interim:* a `/etc/hosts` entry on the workstation, or just use `beelink-ip:port`.
+- **LAN-*wide* DNS + `*.home` names.** The Orange Livebox won't distribute a custom DNS server,
+  so *automatic* LAN-wide name resolution is still on hold. **AdGuard Home now solves this
+  per-device today** — its `*.home → Beelink` rewrite + manual DNS on each device lights up NPM's
+  proxy hosts (see AdGuard, under *Done*). Full LAN-wide (no per-device step) waits for OPNsense
+  to become the **DHCP server** — then it hands out AdGuard/Unbound as DNS to everything at once.
+  *Interim for un-pointed devices:* a `/etc/hosts` entry on the workstation, or `beelink-ip:port`.
 - **NPM proxy hosts to create** (in the NPM UI, `:81`) once DNS resolves — forward to the Beelink
   IP + published port (no shared docker network yet). ⚠️ **enable "Websockets Support"** on the
   monitoring ones — Uptime Kuma and Beszel are realtime over WebSocket and load blank without it:
@@ -22,11 +24,16 @@ stack from home today; these are the "next phase" items — most tied to standin
   | `jellyfin.home` / `seerr.home` / `sonarr.home` / … | the media-stack ports | as needed |
 - **Tailscale** for remote/5G access. Pairs with OPNsense (which can be the Tailscale subnet
   router). No port-forwarding, no certs needed — the tailnet is encrypted.
-- **AdGuard Home** (optional) — could run then for network-wide ad-blocking + the DNS rewrites,
-  or just use OPNsense Unbound directly. Was dropped now because without LAN-wide distribution
-  it only helps manually-pointed devices.
-
 ## Done
+
+- **AdGuard Home** (the `adguard` role). Network-wide DNS **ad/tracker/malware blocking** +
+  `*.home` rewrites, in its own compose project. DNS binds `:53` on the Beelink's LAN IP (dodges
+  the systemd-resolved stub — no host DNS change); admin on `:3000` (NPM owns `:80`). Upstream is
+  **Quad9 over DoH** (encrypted, free malware layer). **Rollout is per-device for now** — the
+  Livebox can't distribute DNS, so you point each device at the Beelink manually; this all carries
+  over 1:1 to OPNsense (same plugin, or the same idea in Unbound). Setup/operate: see the AdGuard
+  section of the [[Runbook]]. *Escalation if impatient:* let AdGuard be the LAN DHCP server
+  (disable the Livebox's) for true whole-network coverage before OPNsense exists.
 
 - **Monitoring + alerting** (the `monitoring` role). Uptime Kuma (service/container up-down +
   alerting), Beszel (host + per-container resource history + threshold alerts), and an off-box

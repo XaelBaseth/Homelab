@@ -67,8 +67,6 @@
     - "{{ storage_mount }}/torrents"
     - "{{ storage_mount }}/torrents/movies"
     - "{{ storage_mount }}/torrents/tv"
-    - "{{ storage_mount }}/torrents/audiobooks"
     - "{{ storage_mount }}/media"
     - "{{ storage_mount }}/media/movies"
     - "{{ storage_mount }}/media/tv"
-    - "{{ storage_mount }}/media/audiobooks"

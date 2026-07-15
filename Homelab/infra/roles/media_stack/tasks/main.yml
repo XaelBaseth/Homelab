@@ -25,7 +25,6 @@
     - "{{ media_stack_appdata }}/radarr"
     - "{{ media_stack_appdata }}/bazarr"
     - "{{ media_stack_appdata }}/recyclarr"
-    - "{{ media_stack_appdata }}/lazylibrarian"
     - "{{ media_stack_appdata }}/jellyfin"
     - "{{ media_stack_appdata }}/seerr"
     - "{{ media_stack_appdata }}/maintainerr"

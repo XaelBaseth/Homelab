@@ -93,22 +93,6 @@ services:
       - ${MEDIA}:/data
     restart: unless-stopped
 
-  lazylibrarian:
-    image: {{ lazylibrarian_image }}
-    container_name: lazylibrarian
-    environment:
-      - PUID=${PUID}
-      - PGID=${PGID}
-      - TZ=${TZ}
-    ports:
-      - 5299:5299
-    volumes:
-      - ${APPDATA}/lazylibrarian:/config
-      - ${MEDIA}:/data                   # whole /data mounted so imports hardlink (same as the *arrs)
-    restart: unless-stopped
-    # Talks to prowlarr:9696 (indexers) and qBittorrent via the VPN container at gluetun:8080.
-    # Not itself behind the VPN — it only hands torrents to qBittorrent, which already is.
-
   recyclarr:
     image: {{ recyclarr_image }}
     container_name: recyclarr

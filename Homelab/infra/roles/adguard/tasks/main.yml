@@ -1,0 +1,26 @@
+---
+- name: Create the AdGuard stack directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0755"
+  loop:
+    - "{{ adguard_dir }}"
+    - "{{ adguard_appdata }}"
+    - "{{ adguard_appdata }}/conf"   # persisted config (AdguardHome.yaml, written by the UI)
+    - "{{ adguard_appdata }}/work"   # runtime data (query log, stats, filter caches)
+
+- name: Render the docker-compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ adguard_dir }}/docker-compose.yml"
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0644"
+
+- name: Deploy AdGuard Home
+  community.docker.docker_compose_v2:
+    project_src: "{{ adguard_dir }}"
+    state: present

@@ -1,0 +1,6 @@
+---
+- name: Deploy AdGuard Home (network-wide DNS ad-blocking + local *.home names)
+  hosts: beelink
+  become: true
+  roles:
+    - adguard

@@ -7,7 +7,7 @@
     - storage
     - docker
     - media_stack
-    - audiobookshelf
     - glance
     - monitoring
     - administration
+    - adguard

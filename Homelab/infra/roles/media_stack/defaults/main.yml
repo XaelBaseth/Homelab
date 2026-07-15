@@ -6,7 +6,6 @@ sonarr_image: lscr.io/linuxserver/sonarr:latest
 radarr_image: lscr.io/linuxserver/radarr:latest
 bazarr_image: lscr.io/linuxserver/bazarr:latest
 recyclarr_image: ghcr.io/recyclarr/recyclarr:latest
-lazylibrarian_image: lscr.io/linuxserver/lazylibrarian:latest
 jellyfin_image: lscr.io/linuxserver/jellyfin:latest
 seerr_image: ghcr.io/seerr-team/seerr:latest  # was fallenbagel/jellyseerr (deprecated Feb 2026)
 maintainerr_image: ghcr.io/maintainerr/maintainerr:latest

@@ -1,5 +1,0 @@
----
-audiobookshelf_image: ghcr.io/advplyr/audiobookshelf:latest
-audiobookshelf_dir: "{{ stacks_root }}/audiobookshelf"   # compose lives here (Dockge-managed, under /home/stacks)
-audiobookshelf_appdata: /home/audiobookshelf/appdata     # config + metadata (live data, absolute path — not moved)
-audiobookshelf_port: 13378                               # host port → container's internal :80

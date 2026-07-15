@@ -29,17 +29,16 @@ Internet
    │     ├── gluetun ───VPN(OpenVPN)──▶ CyberGhost (Amsterdam)
    │     │     └── qbittorrent   (network_mode: service:gluetun — ALL traffic via VPN)
    │     ├── prowlarr → sonarr / radarr → bazarr   (recyclarr syncs their quality profiles)
-   │     ├── lazylibrarian → qBittorrent(VPN)   (audiobooks: Prowlarr indexers → hardlink import)
    │     ├── jellyfin (/dev/dri Quick Sync) · seerr · maintainerr
    │     └── npm   (Nginx Proxy Manager — reverse proxy :80/:443, admin :81)
    │
-   ├── compose project: "audiobookshelf" (/home/stacks/audiobookshelf)
-   │     └── audiobookshelf  (:13378 — reads /data/media/audiobooks; standalone, no VPN)
+   ├── compose project: "dashboard"    (/home/glance)
+   │     └── glance   (:8280 — status board + host stats)
    │
-   └── compose project: "dashboard"    (/home/glance)
-         └── glance   (:8280 — status board + host stats)
+   └── compose project: "adguard"      (/home/stacks/adguard)
+         └── adguard  (DNS :53 on the LAN IP — ad/tracker blocking + *.home rewrites; admin :3000)
 
-Storage:  /data (ext4)  →  torrents/{movies,tv,audiobooks} + media/{movies,tv,audiobooks}  (same fs ⇒ hardlinks)
+Storage:  /data (ext4)  →  torrents/{movies,tv} + media/{movies,tv}  (same fs ⇒ hardlinks)
           /home/docker            = Docker data-root (images/volumes)
           /home/media-stack/appdata = per-service /config bind mounts
 ```
@@ -60,16 +59,16 @@ on the normal network.
 | **radarr** | Movie automation | 7878 | `radarr/` |
 | **bazarr** | Subtitles (French) | 6767 | `bazarr/` |
 | **recyclarr** | Syncs TRaSH quality profiles + custom formats → Sonarr/Radarr (cron, VO/French VOSTFR) | — (CLI/cron) | `recyclarr/` |
-| **lazylibrarian** | Audiobook/ebook automation (Sonarr-for-books) → Prowlarr + qBittorrent | 5299 | `lazylibrarian/` |
-| **audiobookshelf** | Audiobook/podcast server — **own stack** (`/home/stacks/audiobookshelf`) | 13378 | `audiobookshelf/appdata/` (own stack) |
 | **jellyfin** | Media server (Quick Sync HW transcode) | 8096 | `jellyfin/` |
 | **seerr** | Request UI (formerly Jellyseerr) | 5055 | `seerr/` |
 | **maintainerr** | Rule-based library cleanup | 6246 | `maintainerr/` |
 | **npm** | Reverse proxy (name-based access) | 80/443/81 | `npm/` |
 | **glance** | Dashboard (separate project) | 8280 | `/home/glance/config/glance.yml` |
+| **adguard** | DNS ad/tracker/malware blocking + `*.home` rewrites (own project) | 53 (DNS) / 3000 (admin) | `adguard/{conf,work}` |
 
-Access today: `http://<beelink-ip>:<port>`. Clean `*.home` names via NPM are on hold until
-OPNsense provides LAN DNS — see [[Roadmap]].
+Access today: `http://<beelink-ip>:<port>`. Clean `*.home` names now resolve via **AdGuard**'s
+`*.home → beelink` rewrite (per-device DNS for now — the Livebox can't push it LAN-wide until
+OPNsense) → **NPM** proxy hosts. See the AdGuard setup in [[Runbook]] and [[Roadmap]].
 
 ## Key decisions
 
@@ -82,11 +81,6 @@ OPNsense provides LAN DNS — see [[Roadmap]].
 - **No UFW** on the Docker host (Docker bypasses it; the LAN/OPNsense is the firewall).
 - **Glance is its own compose project** so it can oversee multiple stacks, not just this one.
 - **Cleanup tool = Maintainerr** (it supports Jellyfin natively).
-- **Audiobooks: split acquisition from serving.** **LazyLibrarian** (not Readarr — retired 2026,
-  dead metadata server) does the *arr-style grabbing and lives **in media-stack** because it's coupled
-  (Prowlarr indexers + qBittorrent-via-VPN + `/data` hardlink import). **Audiobookshelf** is the
-  *server* and is a **separate stack** — no pipeline coupling, independently restartable. The rule:
-  co-locate what shares a private-network dependency or lifecycle; isolate standalone apps.
 - **Grab VO, not dubs.** Recyclarr pushes TRaSH's **French VOSTFR** profiles (original audio +
   FR subs) at **1080p** — 4K/Remux would swamp the single 931 GB drive. Bazarr then fetches the
   French subtitles. Config-as-code (`recyclarr.yml.j2`); switching flavour (`multi-vo`) or
