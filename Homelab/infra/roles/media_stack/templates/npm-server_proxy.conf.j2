@@ -1,0 +1,35 @@
+{{ ansible_managed | comment }}
+# Rendered from roles/media_stack/templates/npm-server_proxy.conf.j2 — edit that, not this.
+#
+# NPM automatically includes /data/nginx/custom/server_proxy.conf into EVERY proxy
+# host's server block. That is what lets us keep the bulky half of the forward-auth
+# config in git instead of pasted into NPM's SQLite database, where it would be
+# invisible to version control and lost if that DB ever died.
+#
+# This defines the internal endpoint only — it does not protect anything by itself.
+# A host becomes protected when you add the short `auth_request` snippet to its
+# Advanced tab (see "SSO Setup.md"). On unprotected hosts this block is inert:
+# `internal` means nginx refuses to serve it to outside requests.
+
+location /authelia {
+    internal;
+    proxy_pass http://authelia:9091/api/authz/auth-request;
+
+    # Authelia reconstructs the URL the user actually asked for from these, then
+    # decides allow/deny against its access_control rules.
+    proxy_set_header X-Original-Method $request_method;
+    proxy_set_header X-Original-URL $scheme://$http_host$request_uri;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-Host $http_host;
+    proxy_set_header X-Forwarded-URI $request_uri;
+    proxy_set_header X-Forwarded-For $remote_addr;
+
+    # This is an auth check, not a data request: never forward the body, and be
+    # explicit about the zero length or nginx will happily send a stale one.
+    proxy_pass_request_body off;
+    proxy_set_header Content-Length "";
+
+    # Keep a slow//dead Authelia from hanging every proxied request behind it.
+    proxy_connect_timeout 5s;
+    proxy_read_timeout 5s;
+}

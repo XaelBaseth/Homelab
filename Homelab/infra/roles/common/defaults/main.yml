@@ -9,6 +9,10 @@ common_packages:
   - vim
   - htop
   - locales
+  # Backs community.crypto's x509 modules — the identity role uses them to generate
+  # the local CA and the *.media.home wildcard. Ansible runs those modules ON the
+  # Beelink, so the library has to be present there, not on the workstation.
+  - python3-cryptography
 
 # System timezone — change if you're not in this zone.
 common_timezone: Europe/Paris

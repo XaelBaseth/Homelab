@@ -54,6 +54,16 @@ infra/
 - `vault_watchtower_notification_url` — **optional** shoutrrr URL for Watchtower's update alerts
   (Discord format `discord://TOKEN@ID`). If unset, Watchtower still runs but only logs to its own
   container (visible in Dozzle) instead of pinging Discord
+- **Identity stack** (all generated with `openssl rand -hex 32`, see [[SSO Setup]]):
+  - `vault_lldap_admin_password` — the `admin` login for LLDAP's web UI at `:17170`
+  - `vault_lldap_jwt_secret` — signs LLDAP's own session tokens
+  - `vault_lldap_key_seed` — derives LLDAP's password-encryption key. **Never change it after
+    first run** — every stored password becomes unreadable and everyone is locked out
+  - `vault_authelia_ldap_password` — password for the `authelia` service account, which Ansible
+    creates in LLDAP and keeps in sync. Also what Jellyfin's LDAP plugin binds with
+  - `vault_authelia_session_secret` — signs the SSO session cookie
+  - `vault_authelia_storage_encryption_key` — encrypts Authelia's SQLite database
+  - `vault_authelia_jwt_secret` — signs Authelia's identity-verification links
 
 Edit secrets:
 ```bash
@@ -82,6 +92,9 @@ ansible-playbook playbooks/administration.yml
 
 # Deploy AdGuard Home (DNS ad-blocking + *.home names) — first run needs the wizard, see below
 ansible-playbook playbooks/adguard.yml
+
+# Deploy the identity stack (LLDAP directory + Authelia SSO) — GUI half is in [[SSO Setup]]
+ansible-playbook playbooks/identity.yml
 
 # Full converge (everything)
 ansible-playbook playbooks/site.yml
@@ -211,6 +224,57 @@ OPNsense phase.
 > `/etc/resolv.conf` at an **upstream** (`9.9.9.9`) — *never* at AdGuard itself, so the host never
 > depends on its own container. Then re-run the playbook. (Move this into the `adguard` role if it
 > ever becomes necessary — it isn't today.)
+
+## SSO — operating it
+
+First-time setup is a separate page: **[[SSO Setup]]**. This is the day-to-day part.
+
+**Architecture in one line:** LLDAP holds the users → Authelia reads them and runs the login
+portal → NPM asks Authelia about every request before it reaches an app. Jellyfin is the
+exception: it validates against LLDAP *directly* over LDAP, because its TV and phone clients
+can't do the browser redirect that forward auth requires.
+
+**Add a person** — LLDAP at `http://192.168.1.19:17170`, *Users → Create a user*. That's the
+whole job: they can immediately reach every protected app and Jellyfin. If they'll use Jellyfin,
+match their **User ID** to any existing Jellyfin username or the LDAP plugin makes a second,
+empty account instead of reusing theirs.
+
+**Remove a person** — delete them in LLDAP. Authelia re-reads the directory every minute, so
+access is gone within ~60s; their existing browser session dies at its next check.
+
+**Password changes** — users do it themselves in LLDAP. Authelia is intentionally read-only
+against the directory (the service account sits in `lldap_strict_readonly`) and cannot change
+passwords, which is why its own reset flow is disabled.
+
+**Protect a new app** — add its proxy host in NPM, then paste the 7-line `auth_request` snippet
+from [[SSO Setup]] into its Advanced tab. No Ansible change needed; the `/authelia` endpoint it
+calls is already included into every host.
+
+**Monitoring** — Uptime Kuma watches `Authelia` (`http://authelia:9091/api/health`) and `LLDAP`
+(`http://lldap:17170/health`), both by container name over the `homelab` network, tagged
+*health* + *administration* and wired to the same Discord notification as everything else.
+Glance shows them under *Infrastructure* and links to the portal and the directory.
+
+**Why gluetun is on the `homelab` network** — qBittorrent runs inside gluetun's network
+namespace, so Glance could not health-check its WebUI once the host port went away. gluetun
+therefore joins `homelab` and sets `FIREWALL_OUTBOUND_SUBNETS={{ homelab_subnet }}` to allow
+that traffic. This is docker-local only — internet-bound traffic still has no route but the
+tunnel, so **the kill-switch is unaffected** (verified: gluetun exits on the CyberGhost IP, not
+the ISP's). The `homelab` subnet is pinned in `group_vars/all/vars.yml` precisely because that
+firewall rule names it — an auto-assigned range could change on recreate and silently break it.
+
+**Read Authelia's notifications** (there's no SMTP — the file notifier stands in):
+```bash
+docker exec authelia cat /config/notification.txt
+```
+
+**Everyone logged out after a reboot?** Expected. Sessions are in memory (no Redis), so
+restarting Authelia clears them. Logging in again is the entire fix.
+
+**Certificate expiry** — the wildcard is good until **Oct 2028**, the CA until **2036**. To
+reissue, delete `/home/identity/appdata/ca/wildcard.*` on the Beelink and re-run
+`playbooks/identity.yml`, then re-upload it in NPM. The CA stays valid, so devices don't need
+re-trusting.
 
 ## Recyclarr (VO profiles) & Bazarr (French subs) — first-time setup
 

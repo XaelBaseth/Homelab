@@ -1,0 +1,263 @@
+---
+- name: Create the identity stack directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0755"
+  loop:
+    - "{{ identity_dir }}"
+    - "{{ identity_appdata }}"
+    - "{{ identity_appdata }}/lldap"      # LLDAP's SQLite directory (users, groups, hashed passwords)
+    - "{{ identity_appdata }}/authelia"   # configuration.yml + db.sqlite3 + notification.txt
+    - "{{ identity_appdata }}/ca"         # local CA + the *.{{ sso_domain }} wildcard it signs
+
+# The `homelab` network is what lets NPM call Authelia and Jellyfin call LLDAP across
+# compose projects. It must exist BEFORE either stack is deployed, which is why the
+# identity role runs ahead of media_stack in site.yml.
+- name: Create the shared `homelab` docker network
+  community.docker.docker_network:
+    name: homelab
+    state: present
+    ipam_config:
+      - subnet: "{{ homelab_subnet }}"
+
+- name: Render the stack environment file (secrets from the vault)
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ identity_dir }}/.env"
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0600"
+  notify: Restart identity containers
+
+- name: Render the Authelia configuration
+  ansible.builtin.template:
+    src: authelia.yml.j2
+    dest: "{{ identity_appdata }}/authelia/configuration.yml"
+    owner: "{{ media_puid }}"     # Authelia runs as UID 1000 and must read its own config
+    group: "{{ media_pgid }}"
+    mode: "0600"                  # contains the session, storage and LDAP secrets
+  notify: Restart identity containers
+
+# ── Local CA + wildcard certificate ───────────────────────────────────────────
+# Authelia only issues `Secure` session cookies and refuses to operate over plain
+# HTTP, so the proxied hosts have to be HTTPS. With no public domain, we sign our
+# own. Every one of these modules is idempotent: existing files that still match
+# are left alone, so re-running the play does NOT mint a new certificate.
+
+- name: Generate the local CA private key
+  community.crypto.openssl_privatekey:
+    path: "{{ identity_appdata }}/ca/ca.key"
+    size: 4096
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0600"
+
+- name: Generate the local CA signing request
+  community.crypto.openssl_csr:
+    path: "{{ identity_appdata }}/ca/ca.csr"
+    privatekey_path: "{{ identity_appdata }}/ca/ca.key"
+    common_name: "Homelab Root CA"
+    basic_constraints:
+      - "CA:TRUE"
+    basic_constraints_critical: true
+    key_usage:
+      - keyCertSign
+      - cRLSign
+    key_usage_critical: true
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0644"
+
+- name: Generate the self-signed CA certificate
+  community.crypto.x509_certificate:
+    path: "{{ identity_appdata }}/ca/ca.crt"
+    privatekey_path: "{{ identity_appdata }}/ca/ca.key"
+    csr_path: "{{ identity_appdata }}/ca/ca.csr"
+    provider: selfsigned
+    selfsigned_not_after: "{{ identity_ca_days }}"
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0644"
+
+- name: Generate the wildcard private key
+  community.crypto.openssl_privatekey:
+    path: "{{ identity_appdata }}/ca/wildcard.key"
+    size: 2048
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0600"
+
+- name: Generate the wildcard signing request
+  # SANs cover both the wildcard and the bare domain. Note a wildcard matches ONE
+  # label only: *.{{ sso_domain }} covers sonarr.{{ sso_domain }} but would not
+  # cover a deeper name like a.b.{{ sso_domain }} — none of ours are that deep.
+  community.crypto.openssl_csr:
+    path: "{{ identity_appdata }}/ca/wildcard.csr"
+    privatekey_path: "{{ identity_appdata }}/ca/wildcard.key"
+    common_name: "*.{{ sso_domain }}"
+    subject_alt_name:
+      - "DNS:*.{{ sso_domain }}"
+      - "DNS:{{ sso_domain }}"
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0644"
+
+- name: Sign the wildcard certificate with the local CA
+  community.crypto.x509_certificate:
+    path: "{{ identity_appdata }}/ca/wildcard.crt"
+    csr_path: "{{ identity_appdata }}/ca/wildcard.csr"
+    provider: ownca
+    ownca_path: "{{ identity_appdata }}/ca/ca.crt"
+    ownca_privatekey_path: "{{ identity_appdata }}/ca/ca.key"
+    ownca_not_after: "{{ identity_cert_days }}"
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0644"
+
+- name: Fetch the CA + wildcard certificate to the workstation
+  # You need these locally: the CA to install in your browsers/phone, and the
+  # wildcard pair to upload into NPM's "Custom" certificate form.
+  # certs/*.key is gitignored — the CA key itself never leaves the Beelink.
+  ansible.builtin.fetch:
+    src: "{{ identity_appdata }}/ca/{{ item }}"
+    dest: "{{ playbook_dir }}/../certs/"
+    flat: true
+  loop:
+    - ca.crt
+    - wildcard.crt
+    - wildcard.key
+
+- name: Render the docker-compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ identity_dir }}/docker-compose.yml"
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0644"
+
+- name: Deploy the identity stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ identity_dir }}"
+    state: present
+    remove_orphans: true
+
+# ── Seed the directory ────────────────────────────────────────────────────────
+# Authelia binds to LLDAP as a dedicated service account and refuses to START if
+# that bind fails, so the account has to exist before Authelia can come up. Doing
+# it here rather than by hand in the UI also guarantees the password matches the
+# vault value exactly — otherwise you'd have to read a secret out of the vault and
+# retype it into a web form, which is precisely how these get mismatched.
+
+- name: Wait for the LLDAP API to accept connections
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ lldap_web_port }}"
+    timeout: 60
+
+- name: Log in to LLDAP as admin
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ lldap_web_port }}/auth/simple/login"
+    method: POST
+    body_format: json
+    body:
+      username: admin
+      password: "{{ vault_lldap_admin_password }}"
+    status_code: 200
+  register: lldap_login
+  no_log: true                    # the request body is the admin password
+
+- name: Look up the Authelia service account
+  # Ask before acting rather than pattern-matching error strings: LLDAP answers a
+  # duplicate create with a raw SQLite "UNIQUE constraint failed" message, which is
+  # an implementation detail we should not be parsing.
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ lldap_web_port }}/api/graphql"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ lldap_login.json.token }}"
+    body_format: json
+    body:
+      query: '{ user(userId: "authelia") { id groups { id } } }'
+    status_code: 200
+  register: lldap_user_lookup
+  failed_when: false              # "no such user" is an expected answer, not an error
+  changed_when: false
+  no_log: true                    # carries the bearer token
+
+- name: Create the Authelia service account in LLDAP
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ lldap_web_port }}/api/graphql"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ lldap_login.json.token }}"
+    body_format: json
+    body:
+      query: >-
+        mutation CreateUser($user: CreateUserInput!) { createUser(user: $user) { id } }
+      variables:
+        user:
+          id: authelia
+          email: "authelia@{{ sso_domain }}"
+          displayName: Authelia service account
+    status_code: 200
+  register: lldap_create_user
+  when: lldap_user_lookup.json.data.user is not defined or lldap_user_lookup.json.data.user is none
+  failed_when: lldap_create_user.json.errors is defined
+  no_log: true
+
+- name: Set the Authelia service account password
+  # lldap_set_password reads the new password from the environment rather than argv,
+  # so it never appears in `ps` output on the host.
+  ansible.builtin.command:
+    argv:
+      - docker
+      - exec
+      - -e
+      - "LLDAP_USER_PASSWORD={{ vault_authelia_ldap_password }}"
+      - lldap
+      - /app/lldap_set_password
+      - --base-url
+      - "http://localhost:{{ lldap_web_port }}"
+      - --admin-username
+      - admin
+      - --admin-password
+      - "{{ vault_lldap_admin_password }}"
+      - --username
+      - authelia
+  changed_when: false             # no way to tell "already this password" from "changed"
+  no_log: true
+
+- name: Grant the service account read-only directory access
+  # lldap_strict_readonly (built-in group id 3) lets Authelia read users and groups
+  # and nothing else — it cannot modify the directory or change any password.
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ lldap_web_port }}/api/graphql"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ lldap_login.json.token }}"
+    body_format: json
+    body:
+      query: >-
+        mutation { addUserToGroup(userId: "authelia", groupId: 3) { ok } }
+    status_code: 200
+  register: lldap_add_group
+  # Skip when the lookup already showed group 3 among its memberships. On the very
+  # first run the user did not exist yet, so the lookup is empty and this runs.
+  when: >-
+    lldap_user_lookup.json.data.user is not defined
+    or lldap_user_lookup.json.data.user is none
+    or 3 not in (lldap_user_lookup.json.data.user.groups | map(attribute='id') | list)
+  failed_when: lldap_add_group.json.errors is defined
+  no_log: true
+
+- name: Restart Authelia now that its bind account exists
+  # Authelia exits fatally on a failed LDAP bind and Docker backs off between
+  # restarts, so nudge it rather than waiting out the backoff timer. Only needed on
+  # the run that actually seeds the directory — otherwise this would report
+  # "changed" forever and the play would never be idempotent.
+  ansible.builtin.command: docker restart authelia
+  changed_when: true
+  when: lldap_create_user is changed or lldap_add_group is changed

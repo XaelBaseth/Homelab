@@ -1,0 +1,85 @@
+{{ ansible_managed | comment }}
+# Rendered from roles/identity/templates/authelia.yml.j2 — edit that, never this file.
+# Contains secrets, so it is written mode 0600.
+
+theme: 'dark'
+
+server:
+  address: 'tcp://0.0.0.0:9091'
+
+log:
+  level: 'info'
+
+# ── Identity validation ──
+# Signs the one-time links Authelia generates. Password reset is disabled below, so
+# this is mostly dormant — but the secret is still required for Authelia to start.
+# Anything it does emit lands in /config/notification.txt (see the notifier), read with:
+#   docker exec authelia cat /config/notification.txt
+identity_validation:
+  reset_password:
+    jwt_secret: '{{ vault_authelia_jwt_secret }}'
+
+# ── First factor: the LLDAP directory ──
+# `implementation: lldap` makes Authelia apply LLDAP's schema defaults (uid as the
+# username attribute, groupOfNames for groups) so we don't hand-write filters.
+authentication_backend:
+  refresh_interval: '1m'
+  password_reset:
+    # Disabled on purpose: users change their own password in the LLDAP UI
+    # (:{{ lldap_web_port }}). That lets the `authelia` service account stay in
+    # lldap_strict_readonly — it can read the directory but cannot alter a single
+    # password, which is the least privilege that still works.
+    disable: true
+  ldap:
+    implementation: 'lldap'
+    address: 'ldap://lldap:3890'
+    base_dn: '{{ sso_base_dn }}'
+    additional_users_dn: 'ou=people'
+    additional_groups_dn: 'ou=groups'
+    user: 'uid=authelia,ou=people,{{ sso_base_dn }}'   # service account — create it in the LLDAP UI
+    password: '{{ vault_authelia_ldap_password }}'
+
+# ── Who may reach what ──
+# Deny by default, then allow any authenticated user across the stack. The portal
+# itself MUST be bypassed — gating the login page behind a login is a redirect loop.
+# `one_factor` = username + password (no 2FA). Tighten per-host later if you want,
+# e.g. a two_factor rule on qbit before the catch-all.
+access_control:
+  default_policy: 'deny'
+  rules:
+    - domain: 'auth.{{ sso_domain }}'
+      policy: 'bypass'
+    - domain: '*.{{ sso_domain }}'
+      policy: 'one_factor'
+
+# ── The session cookie: the thing that makes this single sign-on ──
+# One cookie scoped to `{{ sso_domain }}`, so a login at sonarr.{{ sso_domain }} is
+# already valid at radarr.{{ sso_domain }} — no second prompt. This is exactly why
+# every protected host has to share this suffix.
+# Stored in memory: no Redis to run, at the cost of everyone re-logging in after a
+# container restart. Fine for one box.
+session:
+  secret: '{{ vault_authelia_session_secret }}'
+  cookies:
+    - domain: '{{ sso_domain }}'
+      authelia_url: 'https://auth.{{ sso_domain }}'
+      default_redirection_url: 'https://jellyfin.{{ sso_domain }}'
+      expiration: '{{ authelia_session_expiration }}'
+      inactivity: '{{ authelia_session_inactivity }}'
+
+# ── Brute-force protection ──
+regulation:
+  max_retries: {{ authelia_max_retries }}
+  find_time: '{{ authelia_find_time }}'
+  ban_time: '{{ authelia_ban_time }}'
+
+storage:
+  encryption_key: '{{ vault_authelia_storage_encryption_key }}'
+  local:
+    path: '/config/db.sqlite3'
+
+# File notifier — avoids standing up SMTP just to run a LAN login portal.
+notifier:
+  disable_startup_check: false
+  filesystem:
+    filename: '/config/notification.txt'

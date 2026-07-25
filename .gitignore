@@ -1,3 +1,6 @@
 .vault_pass
 # Ansible retry files
 *.retry
+# Certificate material fetched from the Beelink by the identity role.
+# The .crt files are public and safe to commit; the private key is not.
+Homelab/infra/certs/*.key

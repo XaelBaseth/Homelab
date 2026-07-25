@@ -12,4 +12,12 @@ services:
       - /data:/mnt/host/data:ro     # media drive, for disk stats
       - /home:/mnt/host/home:ro     # docker + appdata, for disk stats
       - /var/run/docker.sock:/var/run/docker.sock:ro   # docker-containers widget (live status of every container, incl. headless Watchtower)
+    networks:
+      - default
+      - homelab                     # media-stack apps dropped their host ports; the monitor widget reaches them by container name
     restart: unless-stopped
+
+networks:
+  default:
+  homelab:
+    external: true

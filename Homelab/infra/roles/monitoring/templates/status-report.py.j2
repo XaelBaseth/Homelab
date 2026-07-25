@@ -12,15 +12,18 @@ CONFIG = {
     "tz":          "{{ timezone }}",
     "disk_warn":   {{ status_report_disk_warn_pct }},
     "load_warn":   {{ status_report_load_warn_pct }},
+    "cert_warn":   {{ status_report_cert_warn_days }},
+    "certs":       {{ status_report_certs | to_json }},
 }
 {% raw %}
 import base64
 import json
 import re
+import subprocess
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 def http(url, data=None, headers=None, method=None, timeout=15):
@@ -132,6 +135,24 @@ try:
 except Exception as e:  # noqa: BLE001
     beszel_error = str(e)
 
+# ── Certificates: days remaining on the internal CA + the *.media.home wildcard ──
+# Renewal is manual (regenerate on the host, re-upload into NPM), so this is the only
+# thing that warns before the wildcard lapses. `openssl` ships with Debian, which keeps
+# the script dependency-free; per-cert failures are captured, never raised.
+certs = []
+for c in CONFIG["certs"]:
+    try:
+        out = subprocess.run(
+            ["openssl", "x509", "-enddate", "-noout", "-in", c["file"]],
+            capture_output=True, text=True, timeout=10, check=True,
+        ).stdout.strip()                      # e.g. "notAfter=Oct 24 12:00:00 2028 GMT"
+        na = out.split("=", 1)[1].replace(" GMT", "")
+        exp = datetime.strptime(na, "%b %d %H:%M:%S %Y").replace(tzinfo=timezone.utc)
+        days = (exp - datetime.now(timezone.utc)).days
+        certs.append({"label": c["label"], "days": days, "date": exp.strftime("%Y-%m-%d")})
+    except Exception as e:  # noqa: BLE001 — a broken cert read must still yield a report
+        certs.append({"label": c["label"], "error": str(e)})
+
 # ── Health verdict ──
 all_ok = not services_down and kuma_error is None and beszel_error is None
 for h in hosts:
@@ -144,6 +165,9 @@ for h in hosts:
         v = h.get(k)
         if isinstance(v, (int, float)) and v >= CONFIG["load_warn"]:
             all_ok = False
+for c in certs:
+    if "error" in c or c["days"] < CONFIG["cert_warn"]:
+        all_ok = False
 
 # ── Compose the Discord embed ──
 def clamp(lines, empty):
@@ -167,6 +191,19 @@ for h in hosts:
 if beszel_error:
     host_lines = [f"⚠️ Beszel unreachable: {beszel_error}"]
 
+cert_lines = []
+for c in certs:
+    if "error" in c:
+        cert_lines.append(f"⚠️ **{c['label']}** — unreadable: {c['error']}")
+        continue
+    if c["days"] < 0:
+        icon = "🔴"
+    elif c["days"] < CONFIG["cert_warn"]:
+        icon = "🟡"
+    else:
+        icon = "🟢"
+    cert_lines.append(f"{icon} **{c['label']}** — {c['days']}d ({c['date']})")
+
 n_up, n_down = len(services_up), len(services_down)
 now = datetime.now().strftime("%Y-%m-%d %H:%M")
 embed = {
@@ -176,6 +213,7 @@ embed = {
     "fields": [
         {"name": f"Services ({n_up}/{n_up + n_down} up)", "value": clamp(svc_lines, "No monitors found"), "inline": False},
         {"name": "Hosts", "value": clamp(host_lines, "No systems found"), "inline": False},
+        {"name": "Certificates", "value": clamp(cert_lines, "No certificates checked"), "inline": False},
     ],
     "footer": {"text": "Homelab daily status · monitoring role"},
 }

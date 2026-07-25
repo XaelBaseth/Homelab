@@ -69,6 +69,12 @@ pages:
                       # Watchtower runs headless (notify-only) — no web UI, so no link
                   - title: Infra
                     links:
+                      - title: Authelia
+                        url: https://auth.{{ sso_domain }}
+                        icon: di:authelia
+                      - title: LLDAP
+                        url: http://{{ vault_beelink_host }}:17170
+                        icon: di:openldap
                       - title: Nginx Proxy Manager
                         url: http://{{ vault_beelink_host }}:81
                         icon: di:nginx-proxy-manager
@@ -120,22 +126,28 @@ pages:
                 url: http://{{ vault_beelink_host }}:5055
                 icon: di:seerr
               - title: Sonarr
-                url: http://{{ vault_beelink_host }}:8989
+                url: https://sonarr.{{ sso_domain }}
+                check-url: http://sonarr:8989
                 icon: di:sonarr
               - title: Radarr
-                url: http://{{ vault_beelink_host }}:7878
+                url: https://radarr.{{ sso_domain }}
+                check-url: http://radarr:7878
                 icon: di:radarr
               - title: Prowlarr
-                url: http://{{ vault_beelink_host }}:9696
+                url: https://prowlarr.{{ sso_domain }}
+                check-url: http://prowlarr:9696
                 icon: di:prowlarr
               - title: Bazarr
-                url: http://{{ vault_beelink_host }}:6767
+                url: https://bazarr.{{ sso_domain }}
+                check-url: http://bazarr:6767
                 icon: di:bazarr
               - title: Maintainerr
-                url: http://{{ vault_beelink_host }}:6246
+                url: https://maintainerr.{{ sso_domain }}
+                check-url: http://maintainerr:6246
                 icon: di:maintainerr
               - title: qBittorrent
-                url: http://{{ vault_beelink_host }}:8080
+                url: https://qbit.{{ sso_domain }}
+                check-url: http://gluetun:8080
                 icon: di:qbittorrent
 
           - type: monitor
@@ -154,6 +166,14 @@ pages:
               - title: Beszel
                 url: http://{{ vault_beelink_host }}:8090
                 icon: di:beszel
+              - title: Authelia
+                url: https://auth.{{ sso_domain }}
+                check-url: http://authelia:9091/api/health
+                icon: di:authelia
+              - title: LLDAP
+                url: http://{{ vault_beelink_host }}:17170
+                check-url: http://lldap:17170/health
+                icon: di:openldap
 
           - type: monitor
             title: Administration

@@ -1,0 +1,6 @@
+---
+- name: Deploy the identity stack (LLDAP directory + Authelia SSO portal)
+  hosts: beelink
+  become: true
+  roles:
+    - identity

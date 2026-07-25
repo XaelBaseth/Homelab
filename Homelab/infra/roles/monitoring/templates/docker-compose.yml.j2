@@ -9,6 +9,9 @@ services:
     volumes:
       - {{ monitoring_appdata }}/uptime-kuma:/app/data
       - /var/run/docker.sock:/var/run/docker.sock:ro   # enables Docker container monitors (e.g. qbittorrent, behind gluetun)
+    networks:
+      - default
+      - homelab                                        # the media-stack apps no longer publish host ports, so probe them by container name
     restart: unless-stopped
 
   beszel:
@@ -37,3 +40,10 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro   # per-container CPU/mem/net stats
       - {{ media_root }}/.beszel:/extra-filesystems/data:ro   # exposes the /data media drive's usage (empty marker dir — no media files)
     restart: unless-stopped
+
+# Shared network so Uptime Kuma can reach the media-stack apps by container name
+# now that they no longer publish host ports.
+networks:
+  default:
+  homelab:
+    external: true

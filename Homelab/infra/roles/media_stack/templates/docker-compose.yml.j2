@@ -13,12 +13,20 @@ services:
       - OPENVPN_PASSWORD=${OPENVPN_PASSWORD}
       - SERVER_COUNTRIES=${SERVER_COUNTRIES}
       - TZ=${TZ}
+      # Allow traffic to/from the shared docker network so Glance can health-check the
+      # qBittorrent WebUI by name. Docker-local only — internet-bound torrent traffic
+      # still has no route except the tunnel, so the kill-switch is unaffected.
+      - FIREWALL_OUTBOUND_SUBNETS={{ homelab_subnet }}
     ports:
-      - 8080:8080         # qBittorrent WebUI (published here, not on qbit — see note)
+      # qBittorrent's WebUI is no longer published — reach it at qbit.media.home,
+      # which is the only path that passes through Authelia. The torrent ports stay.
       - 6881:6881         # torrent TCP
       - 6881:6881/udp     # torrent UDP
     volumes:
       - ${APPDATA}/gluetun:/gluetun
+    networks:
+      - default
+      - homelab                       # qBittorrent shares this namespace; lets Glance reach its WebUI
     restart: unless-stopped
 
   qbittorrent:
@@ -45,10 +53,11 @@ services:
       - PUID=${PUID}
       - PGID=${PGID}
       - TZ=${TZ}
-    ports:
-      - 9696:9696
     volumes:
       - ${APPDATA}/prowlarr:/config
+    networks:
+      - default
+      - homelab                       # no host port any more — monitored by container name
     restart: unless-stopped
 
   sonarr:
@@ -58,11 +67,12 @@ services:
       - PUID=${PUID}
       - PGID=${PGID}
       - TZ=${TZ}
-    ports:
-      - 8989:8989
     volumes:
       - ${APPDATA}/sonarr:/config
       - ${MEDIA}:/data
+    networks:
+      - default
+      - homelab                       # no host port any more — monitored by container name
     restart: unless-stopped
 
   radarr:
@@ -72,11 +82,12 @@ services:
       - PUID=${PUID}
       - PGID=${PGID}
       - TZ=${TZ}
-    ports:
-      - 7878:7878
     volumes:
       - ${APPDATA}/radarr:/config
       - ${MEDIA}:/data
+    networks:
+      - default
+      - homelab                       # no host port any more — monitored by container name
     restart: unless-stopped
 
   bazarr:
@@ -86,11 +97,12 @@ services:
       - PUID=${PUID}
       - PGID=${PGID}
       - TZ=${TZ}
-    ports:
-      - 6767:6767
     volumes:
       - ${APPDATA}/bazarr:/config
       - ${MEDIA}:/data
+    networks:
+      - default
+      - homelab                       # no host port any more — monitored by container name
     restart: unless-stopped
 
   recyclarr:
@@ -122,10 +134,13 @@ services:
     devices:
       - /dev/dri:/dev/dri
     ports:
-      - 8096:8096
+      - 8096:8096                     # stays published: TV/phone clients hit Jellyfin directly
     volumes:
       - ${APPDATA}/jellyfin:/config
       - ${MEDIA}/media:/data/media
+    networks:
+      - default                       # the media-stack project network (the *arr apps, gluetun)
+      - homelab                       # + the shared network, so the LDAP plugin can reach `lldap`
     restart: unless-stopped
 
   seerr:
@@ -145,10 +160,11 @@ services:
     container_name: maintainerr
     environment:
       - TZ=${TZ}
-    ports:
-      - 6246:6246
     volumes:
       - ${APPDATA}/maintainerr:/opt/data
+    networks:
+      - default
+      - homelab                       # no host port any more — monitored by container name
     restart: unless-stopped
 
   npm:
@@ -161,4 +177,14 @@ services:
     volumes:
       - ${APPDATA}/npm/data:/data
       - ${APPDATA}/npm/letsencrypt:/etc/letsencrypt
+    networks:
+      - default                       # reaches sonarr/radarr/gluetun/... by container name
+      - homelab                       # + the shared network, so it can call `authelia` for forward auth
     restart: unless-stopped
+
+# Every other service omits `networks:` and so joins `default` implicitly — only the
+# two that talk to the identity stack need to be on both.
+networks:
+  default:
+  homelab:
+    external: true                    # created by the identity role, which runs first in site.yml

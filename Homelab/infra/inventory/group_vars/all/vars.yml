@@ -21,3 +21,17 @@ jellyfin_video_gid: 44
 
 # services will be jellyfin.home, sonarr.home, etc.
 local_domain: home
+
+# ── SSO naming (see the identity role and [[SSO Setup]]) ──
+# Hosts behind Authelia live one label deeper: sonarr.media.home, auth.media.home, …
+# The session cookie is scoped to this suffix, and it needs at least two labels —
+# browsers refuse cookies on a single-label domain, so plain `home` cannot work.
+# Global rather than role-scoped because glance and identity both render it.
+sso_domain: media.home
+sso_base_dn: "dc=media,dc=home"
+
+# Shared cross-stack docker network (created by the identity role). Pinned rather than
+# left to docker's auto-allocation because gluetun's firewall has to name the subnet
+# explicitly — an auto-assigned range could change on recreate and silently cut
+# qBittorrent's WebUI off from Glance.
+homelab_subnet: 172.23.0.0/16

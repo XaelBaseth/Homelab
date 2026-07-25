@@ -1,0 +1,7 @@
+---
+# A plain `compose up` does NOT recreate a container just because a bind-mounted
+# file changed, so a re-rendered configuration.yml or .env would otherwise sit on
+# disk unread until the next manual restart. Same pattern as the media_stack VPN handler.
+- name: Restart identity containers
+  ansible.builtin.command: docker restart lldap authelia
+  changed_when: true

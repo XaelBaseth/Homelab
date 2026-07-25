@@ -2,3 +2,10 @@
 - name: Recreate VPN containers
   ansible.builtin.command: docker restart gluetun qbittorrent
   changed_when: true
+
+# nginx only reads /data/nginx/custom/* at (re)start, so a re-rendered snippet is
+# ignored until NPM restarts. Runs after the compose task, so on a first-ever run
+# the container already exists by the time this fires.
+- name: Reload NPM
+  ansible.builtin.command: docker restart npm
+  changed_when: true
