@@ -48,6 +48,20 @@ pages:
                       - title: Seerr
                         url: http://{{ vault_beelink_host }}:5055
                         icon: di:seerr
+                  # Ports are written out rather than templated: they are webapps role
+                  # defaults, and role defaults are not in scope when playbooks/dashboard.yml
+                  # runs this role on its own. Same reason the media ports above are literal.
+                  - title: Apps
+                    links:
+                      - title: Mealie
+                        url: http://{{ vault_beelink_host }}:9925
+                        icon: di:mealie
+                      - title: Linkding
+                        url: http://{{ vault_beelink_host }}:9090
+                        icon: di:linkding
+                      - title: Docs
+                        url: http://{{ vault_beelink_host }}:8081
+                        icon: di:mkdocs
               - type: bookmarks
                 groups:
                   - title: Monitoring
@@ -109,6 +123,9 @@ pages:
               - glanceapp/glance
               - NginxProxyManager/nginx-proxy-manager
               - AdguardTeam/AdGuardHome
+              - mealie-recipes/mealie
+              - sissbruecker/linkding
+              - squidfunk/mkdocs-material
 
   # ══ Page 2: Services — the application stack, health at a glance ══
   - name: Services
@@ -174,6 +191,20 @@ pages:
                 url: http://{{ vault_beelink_host }}:17170
                 check-url: http://lldap:17170/health
                 icon: di:openldap
+
+          - type: monitor
+            title: Apps
+            cache: 1m
+            sites:
+              - title: Mealie
+                url: http://{{ vault_beelink_host }}:9925
+                icon: di:mealie
+              - title: Linkding
+                url: http://{{ vault_beelink_host }}:9090
+                icon: di:linkding
+              - title: Docs
+                url: http://{{ vault_beelink_host }}:8081
+                icon: di:mkdocs
 
           - type: monitor
             title: Administration

@@ -1,0 +1,33 @@
+{{ ansible_managed | comment }}
+# Rendered from roles/webapps/templates/mkdocs.yml.j2 — edit that, not this.
+# The pages themselves live in docs/ at the repo root and are rsynced in beside this file.
+
+site_name: Homelab
+site_description: Internal documentation for the Beelink homelab
+
+theme:
+  name: material
+  palette:
+    scheme: slate        # dark, to match Glance
+  features:
+    - navigation.instant
+    - navigation.top
+    - content.code.copy
+    - search.suggest
+
+plugins:
+  # Only plugins BUNDLED in squidfunk/mkdocs-material may be listed here. Anything else
+  # needs `pip install` in a custom Dockerfile, which would take this stack off the
+  # plain-pull update path that Watchtower relies on. Keep it to what ships in the image.
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+
+# No `nav:` on purpose — MkDocs derives the sidebar from the file tree, so dropping a new
+# .md into docs/ publishes it with no config change. Ordering follows filename; prefix
+# with numbers (10-network.md) if you ever need to control it.

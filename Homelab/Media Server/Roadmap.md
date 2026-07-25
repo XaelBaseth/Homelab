@@ -26,6 +26,28 @@ stack from home today; these are the "next phase" items — most tied to standin
   router). No port-forwarding, no certs needed — the tailnet is encrypted.
 ## Done
 
+- **Webapps stack** (the `webapps` role) — the home for self-hosted apps that aren't media:
+  **Mealie** (recipes/meal planning), **Linkding** (bookmarks) and **docs** (MkDocs Material,
+  serving `docs/` from the repo root). Own compose project, published host ports, each app on its
+  own login — **deliberately outside SSO**, same reasoning as administration/monitoring/glance.
+  - **No new certificate.** The `*.media.home` wildcard would already cover `mealie.media.home`
+    (a wildcard matches exactly one label), so putting these behind NPM later costs a proxy-host
+    form and nothing else. A separate `*.apps.home` namespace was rejected: it needs a second
+    wildcard, a second Authelia `session.cookies` entry, an `auth.apps.home` portal host, and it
+    gives you a *separate login per domain* — cost with no benefit on a LAN-only stack.
+  - **Grimoire was the original pick and was dropped.** Upstream has been rewritten: the published
+    image is frozen at Feb 2025 (the PocketBase build, port 5173) while current `main` is a
+    different daemon on port 3210 with **no published image** — its compose does `build: .`.
+    Either choice leaves the stack off the plain-pull path Watchtower needs. Linkding does the
+    same job and is actively maintained.
+  - **MkDocs runs as a single container, no build step.** `squidfunk/mkdocs-material` already has
+    `CMD ["serve", "--dev-addr=0.0.0.0:8000"]` and `WORKDIR /docs`, so it serves the site itself
+    and watches the mount — publishing a page is `ansible-playbook playbooks/webapps.yml`, with
+    nothing to restart. Upstream calls the image preview-only because `mkdocs serve` is a dev
+    server; on a single-user LAN docs page that is not a real cost. Pages are **plain markdown in
+    `docs/`, not the Obsidian vault** — `[[wikilinks]]` would need a plugin, and any plugin not
+    bundled in the image forces a custom Dockerfile.
+
 - **SSO for the media stack** (the `identity` role). **LLDAP** (user directory) + **Authelia**
   (login portal + forward auth), deployed and idempotent. One account instead of one per app.
   Ansible does everything up to the GUI boundary: containers, the shared `homelab` network, the

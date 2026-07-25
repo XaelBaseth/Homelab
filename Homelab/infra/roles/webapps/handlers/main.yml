@@ -1,0 +1,9 @@
+---
+# `docker compose up` does not recreate a container just because a bind-mounted file
+# changed, so a .env edit needs an explicit bounce.
+#
+# `docs` is deliberately absent: mkdocs serve watches both /docs and its own
+# mkdocs.yml and rebuilds itself, so it never needs restarting.
+- name: Restart webapps containers
+  ansible.builtin.command: docker restart mealie linkding
+  changed_when: true

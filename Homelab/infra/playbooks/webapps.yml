@@ -1,0 +1,6 @@
+---
+- name: Deploy the webapps stack (Mealie, Linkding, MkDocs documentation)
+  hosts: beelink
+  become: true
+  roles:
+    - webapps

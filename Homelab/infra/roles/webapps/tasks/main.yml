@@ -1,0 +1,84 @@
+---
+# Declared here rather than in common_packages on purpose: playbooks/webapps.yml runs this
+# role on its own, so it cannot rely on the common role having run first. ansible.posix
+# .synchronize shells out to rsync on BOTH ends, and the Beelink ships without it.
+- name: Ensure rsync is installed (needed to publish the documentation sources)
+  ansible.builtin.apt:
+    name: rsync
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create the webapps stack directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0755"
+  loop:
+    - "{{ webapps_dir }}"
+    - "{{ webapps_appdata }}"
+    - "{{ webapps_appdata }}/mealie"      # Mealie's /app/data — SQLite db, recipe images, backups
+    - "{{ webapps_docs_dir }}"            # mkdocs.yml lives here; docs/ is synced in below
+    # NOT {{ webapps_docs_dir }}/docs — rsync creates it and, with --archive, copies the
+    # source directory's mode across. Managing it here too makes the two fight: the file
+    # task sets 0755, rsync sets it back to whatever docs/ is on the workstation, and both
+    # tasks report `changed` on every single converge.
+
+- name: Create the linkding data directory
+  # Deliberately no owner/group. linkding's image sets no USER, so it runs as root and
+  # chowns its own data tree — managing ownership here would flip it on every converge
+  # and fire the restart handler for nothing. Same reasoning as the NPM directory in
+  # the media_stack role.
+  ansible.builtin.file:
+    path: "{{ webapps_appdata }}/linkding"
+    state: directory
+    mode: "0755"
+
+- name: Render the stack environment file (secrets from the vault)
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ webapps_dir }}/.env"
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0600"
+  notify: Restart webapps containers
+
+# ── Documentation ─────────────────────────────────────────────────────────────
+# No handler on either of these: `mkdocs serve` watches /docs and its own config and
+# rebuilds in place, so publishing a page is just getting the file onto the box.
+
+- name: Render the MkDocs configuration
+  ansible.builtin.template:
+    src: mkdocs.yml.j2
+    dest: "{{ webapps_docs_dir }}/mkdocs.yml"
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0644"
+
+- name: Publish the documentation sources
+  # delete:true so a page deleted from git also disappears from the served site —
+  # a plain copy would leave the old file behind forever.
+  # become:false because synchronize shells out to rsync as the CONNECTING user, and
+  # `beelink` already owns the destination. Running it under become is a known footgun:
+  # it tries to escalate on the far end and breaks the ssh transport.
+  ansible.posix.synchronize:
+    src: "{{ webapps_docs_src }}/"
+    dest: "{{ webapps_docs_dir }}/docs/"
+    delete: true
+  become: false
+
+- name: Render the docker-compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ webapps_dir }}/docker-compose.yml"
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0644"
+
+- name: Deploy the webapps stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ webapps_dir }}"
+    state: present
+    remove_orphans: true

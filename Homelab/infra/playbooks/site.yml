@@ -8,6 +8,7 @@
     - docker
     - identity      # before media_stack: creates the `homelab` network both stacks join
     - media_stack
+    - webapps       # also joins the `homelab` network, so it follows identity too
     - glance
     - monitoring
     - administration

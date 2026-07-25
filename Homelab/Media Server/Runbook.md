@@ -31,8 +31,11 @@ infra/
     ├── media_stack/            # the docker-compose stack (templated) + secrets
     ├── glance/                 # the dashboard (separate compose project)
     ├── monitoring/             # Uptime Kuma + Beszel + healthchecks.io cron  (OBSERVE only)
-    └── administration/         # Dozzle (logs) + Dockge (mgmt) + Watchtower (notify)  (ACT on containers)
+    ├── administration/         # Dozzle (logs) + Dockge (mgmt) + Watchtower (notify)  (ACT on containers)
+    └── webapps/                # Mealie + Linkding + MkDocs docs site (non-media apps)
 ```
+
+Note `docs/` at the **repo root** (next to `PLAN.md`) — the markdown served by the docs container.
 
 ## What's in the vault
 
@@ -42,6 +45,8 @@ infra/
 - `vault_cyberghost_user` / `vault_cyberghost_password` — CyberGhost OpenVPN credentials
 - `vault_cyberghost_client_cert` — OpenVPN **client certificate** (PEM, `BEGIN CERTIFICATE`)
 - `vault_cyberghost_client_key` — OpenVPN **client private key** (PEM, `BEGIN PRIVATE KEY`)
+- `vault_linkding_superuser_password` — password for the linkding superuser created on first
+  start (the username is `linkding_superuser` in `roles/webapps/defaults/main.yml`)
 - `vault_sonarr_api_key` / `vault_radarr_api_key` — API keys recyclarr uses to push quality
   profiles (Sonarr/Radarr → Settings → General → API Key). Optional: if unset the stack still
   deploys, recyclarr just can't sync until they're filled in (see recyclarr setup below)
@@ -95,6 +100,9 @@ ansible-playbook playbooks/adguard.yml
 
 # Deploy the identity stack (LLDAP directory + Authelia SSO) — GUI half is in [[SSO Setup]]
 ansible-playbook playbooks/identity.yml
+
+# Deploy the webapps stack (Mealie + Linkding + docs) — also republishes docs/
+ansible-playbook playbooks/webapps.yml
 
 # Full converge (everything)
 ansible-playbook playbooks/site.yml
@@ -418,6 +426,65 @@ delete those tasks after the first post-consolidation converge.
 **Adding a service to the monitoring stack** mirrors the media-stack flow: image tag in
 `roles/monitoring/defaults/main.yml` → service block in the compose template → any `appdata` dir
 in the tasks loop → `ansible-playbook playbooks/monitoring.yml`.
+
+## Webapps stack (Mealie · Linkding · docs)
+
+The home for self-hosted apps that have nothing to do with media. Own compose project at
+`/home/stacks/webapps`, appdata at `/home/webapps/appdata`.
+
+| App | URL | Login |
+|---|---|---|
+| **Mealie** — recipes, meal planning | `http://192.168.1.19:9925` | its own (`ALLOW_SIGNUP=false`) |
+| **Linkding** — bookmarks | `http://192.168.1.19:9090` | its own, superuser seeded from the vault |
+| **docs** — MkDocs Material | `http://192.168.1.19:8081` | none, read-only site |
+
+**Deliberately outside SSO**, same reasoning as monitoring/administration/adguard/glance: each app
+keeps its own login on its own published port, so a broken auth layer never costs you access. See
+the scope note in [[SSO Setup]].
+
+**No certificate was added for this stack, and none is needed.** The `*.media.home` wildcard the
+`identity` role already signs would cover `mealie.media.home` today — a wildcard matches exactly
+one label — so if you ever want pretty HTTPS names, it is a proxy-host form in NPM and nothing
+else. All three containers are already on the `homelab` network so NPM can reach them by name.
+Two things to remember if you do it: set `LD_CSRF_TRUSTED_ORIGINS` on linkding (it's commented
+into the compose template) or Django rejects the login POST, and update Mealie's `BASE_URL`.
+
+### First-time setup
+
+1. **Mealie** — log in with the first-run default (`changeme@example.com` / `MyPassword`), then
+   change the email and password immediately in *Settings → Profile*. Nobody can self-register.
+2. **Linkding** — the superuser is created on first start from `LD_SUPERUSER_NAME` (role default
+   `linkding_superuser`) and `vault_linkding_superuser_password`. Just log in and confirm.
+3. **Uptime Kuma** — add three HTTP monitors (`:9925`, `:9090`, `:8081`) in its UI, as usual.
+
+### Publishing documentation
+
+> **One-time workstation dependency:** `sudo apt install rsync`. `ansible.posix.synchronize`
+> shells out to rsync on **both** ends. The role installs it on the Beelink itself (that task is
+> in `roles/webapps/tasks/main.yml` rather than `common_packages`, so `playbooks/webapps.yml`
+> works standalone), but Ansible cannot bootstrap its own control node.
+
+The pages are plain markdown in **`docs/` at the repo root** — *not* the Obsidian vault. Write a
+`.md`, then:
+
+```bash
+ansible-playbook playbooks/webapps.yml
+```
+
+That rsyncs `docs/` onto the Beelink (with `delete: true`, so a page removed from git disappears
+from the site) and the container picks it up by itself — `mkdocs serve` watches the mount and
+rebuilds in place. **Nothing restarts**, which is why there is no handler on those tasks. The
+sidebar comes from the file tree, so there is no `nav` to maintain; prefix filenames with numbers
+if you need to force ordering.
+
+⚠️ **Obsidian `[[wikilinks]]` do not render** — use `[text](other-page.md)`. Making wikilinks work
+needs a third-party MkDocs plugin, and any plugin not bundled in `squidfunk/mkdocs-material` would
+force a custom Dockerfile, taking the stack off the plain-pull path Watchtower relies on. Same
+reason `mkdocs.yml.j2` only lists `search`.
+
+**Adding a service** mirrors the media-stack flow: image tag in `roles/webapps/defaults/main.yml`
+→ service block in the compose template → any `appdata` dir in the tasks loop → Glance bookmark +
+monitor entry in `roles/glance/templates/glance.yml.j2` → `ansible-playbook playbooks/webapps.yml`.
 
 ## Troubleshooting
 
