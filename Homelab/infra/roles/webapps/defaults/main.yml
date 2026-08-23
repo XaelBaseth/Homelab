@@ -1,35 +1,18 @@
 ---
 # ── Webapps stack: the self-hosted applications that aren't media ──
-# Three unrelated tools that share one compose project because none of them is big
-# enough to deserve its own:
-#   mealie   — recipes and meal planning
-#   linkding — bookmarks
-#   docs     — MkDocs Material, serving the internal documentation in docs/
+# Mealie (recipes and meal planning) is the only one left. The stack kept its plural
+# name because it is the landing place for the next non-media app; linkding and the
+# MkDocs documentation site lived here too until they were removed as unused.
 #
 # Scope note: this stack is deliberately OUTSIDE SSO, same reasoning as
 # administration/monitoring/adguard/glance. Each app keeps its own login and its own
 # published port, so a broken auth layer never costs you access. See [[SSO Setup]].
 mealie_image: ghcr.io/mealie-recipes/mealie:latest
-linkding_image: sissbruecker/linkding:latest
-mkdocs_image: squidfunk/mkdocs-material:latest
 
 # Host paths (compose under the shared stacks_root; appdata alongside the other stacks)
 webapps_dir: "{{ stacks_root }}/webapps"
 webapps_appdata: /home/webapps/appdata
 
-# MkDocs expects mkdocs.yml with a docs/ directory NEXT TO it, and the image's WORKDIR
-# is /docs — so this one directory holds both and gets bind-mounted there whole.
-webapps_docs_dir: "{{ webapps_dir }}/mkdocs"
-
-# The documentation sources on the workstation. playbook_dir is Homelab/infra/playbooks,
-# so three levels up is the repo root, where docs/ sits next to PLAN.md and README.md.
-webapps_docs_src: "{{ playbook_dir }}/../../../docs"
-
-# Published ports. Everything here is published on purpose — these apps are reached by
-# IP:port on the LAN, not through NPM, so there is no forward-auth gate to bypass.
+# Published on purpose — this app is reached by IP:port on the LAN, not through NPM,
+# so there is no forward-auth gate to bypass.
 mealie_port: 9925
-linkding_port: 9090
-docs_port: 8081
-
-# The linkding superuser created on first start (password comes from the vault).
-linkding_superuser: xael

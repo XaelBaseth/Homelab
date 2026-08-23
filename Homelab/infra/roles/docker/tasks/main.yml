@@ -77,3 +77,16 @@
     name: "{{ docker_user }}"
     groups: docker
     append: true
+
+# Declared as `external: true` by the media_stack, webapps, glance and monitoring
+# compose files, so it must exist before any of them deploys. It used to be created
+# by the identity role, which ran ahead of media_stack for exactly that reason; that
+# role is gone with the SSO layer, and this is the earliest point where the Docker
+# daemon is guaranteed to be up. The subnet is pinned in group_vars because gluetun's
+# firewall rule names it explicitly.
+- name: Create the shared `homelab` docker network
+  community.docker.docker_network:
+    name: homelab
+    state: present
+    ipam_config:
+      - subnet: "{{ homelab_subnet }}"

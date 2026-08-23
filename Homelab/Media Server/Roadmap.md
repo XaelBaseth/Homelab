@@ -24,59 +24,53 @@ stack from home today; these are the "next phase" items — most tied to standin
   | `jellyfin.home` / `seerr.home` / `sonarr.home` / … | the media-stack ports | as needed |
 - **Tailscale** for remote/5G access. Pairs with OPNsense (which can be the Tailscale subnet
   router). No port-forwarding, no certs needed — the tailnet is encrypted.
+## Tried and removed
+
+- **SSO for the media stack (LLDAP + Authelia + forward auth)** — ran about a month, removed.
+  One password instead of five, and one place to revoke access, are real benefits; they are worth
+  it with several users and a public entry point, and not worth it for one person on one subnet.
+  What it actually cost:
+  - **It could not remove the second prompt where it mattered.** qBittorrent must keep its own
+    login, so a gated qBittorrent asked twice.
+  - **It made name resolution load-bearing.** Authelia issues only `Secure` cookies, so protected
+    apps had to be HTTPS under `*.media.home` — names that exist only on our AdGuard. The gate's
+    own logic then required unpublishing the host ports, which deleted the `IP:port` fallback. A
+    Windows machine silently using the Livebox for DNS could reach none of them.
+  - **A local CA to install on every device**, plus a wildcard certificate to renew by hand.
+  - Removed: the `identity` role, `playbooks/identity.yml`, `certs/`, the `*.media.home` NPM
+    hosts and wildcard, the forward-auth nginx snippet, and seven vault secrets. Jellyfin went
+    back to local accounts; Sonarr/Radarr/Prowlarr went from `External` to Forms with
+    *Disabled for Local Addresses*.
+  - **Precondition if it ever returns:** DHCP-distributed DNS, so `.home` resolves everywhere
+    without touching each device. That is the OPNsense phase above — not something to retrofit
+    onto the Livebox.
+
 ## Done
 
-- **Webapps stack** (the `webapps` role) — the home for self-hosted apps that aren't media:
-  **Mealie** (recipes/meal planning), **Linkding** (bookmarks) and **docs** (MkDocs Material,
-  serving `docs/` from the repo root). Own compose project, published host ports, each app on its
-  own login — **deliberately outside SSO**, same reasoning as administration/monitoring/glance.
-  - **No new certificate.** The `*.media.home` wildcard would already cover `mealie.media.home`
-    (a wildcard matches exactly one label), so putting these behind NPM later costs a proxy-host
-    form and nothing else. A separate `*.apps.home` namespace was rejected: it needs a second
-    wildcard, a second Authelia `session.cookies` entry, an `auth.apps.home` portal host, and it
-    gives you a *separate login per domain* — cost with no benefit on a LAN-only stack.
-  - **Grimoire was the original pick and was dropped.** Upstream has been rewritten: the published
-    image is frozen at Feb 2025 (the PocketBase build, port 5173) while current `main` is a
-    different daemon on port 3210 with **no published image** — its compose does `build: .`.
-    Either choice leaves the stack off the plain-pull path Watchtower needs. Linkding does the
-    same job and is actively maintained.
-  - **MkDocs runs as a single container, no build step.** `squidfunk/mkdocs-material` already has
-    `CMD ["serve", "--dev-addr=0.0.0.0:8000"]` and `WORKDIR /docs`, so it serves the site itself
-    and watches the mount — publishing a page is `ansible-playbook playbooks/webapps.yml`, with
-    nothing to restart. Upstream calls the image preview-only because `mkdocs serve` is a dev
-    server; on a single-user LAN docs page that is not a real cost. Pages are **plain markdown in
-    `docs/`, not the Obsidian vault** — `[[wikilinks]]` would need a plugin, and any plugin not
-    bundled in the image forces a custom Dockerfile.
+- **Webapps stack** (the `webapps` role) — the home for self-hosted apps that aren't media.
+  Own compose project, published host ports, each app on its own login — **deliberately outside
+  SSO**, same reasoning as administration/monitoring/glance. **Mealie** (recipes/meal planning)
+  is what's left of it.
+  - **Linkding and MkDocs were removed as unused** — containers, appdata, NPM proxy hosts and the
+    `docs/` sources at the repo root all went. The stack keeps its plural name as the landing
+    place for the next non-media app. (Grimoire had been rejected in favour of Linkding at the
+    time, over a frozen published image; moot now.)
+  - **Reached by `IP:port`, like everything else.** A `mealie.home` proxy host in NPM would cost
+    one form if you ever want the name; the app is already on the `homelab` network for it.
 
-- **SSO for the media stack** (the `identity` role). **LLDAP** (user directory) + **Authelia**
-  (login portal + forward auth), deployed and idempotent. One account instead of one per app.
-  Ansible does everything up to the GUI boundary: containers, the shared `homelab` network, the
-  local CA + `*.media.home` wildcard cert, the `authelia` service account seeded straight from
-  the vault, and the forward-auth endpoint templated into NPM's `custom/server_proxy.conf` (so
-  the nginx half lives in git, not in NPM's database). **The click-through half is [[SSO Setup]]**
-  — AdGuard rewrite, your LLDAP user, the NPM proxy hosts, CA install, Jellyfin's LDAP plugin.
-  - Protected hosts move to `*.media.home`: the session cookie needs a shared two-label suffix,
-    and browsers reject cookies on a single-label domain like `.home`. Old `*.home` names are
-    untouched.
-  - Jellyfin uses **LDAP**, never forward auth — TV/phone clients can't do a browser redirect.
-  - Deliberately **not** covering administration/monitoring/adguard/glance, so Dockge + Dozzle
-    stay reachable on plain ports if auth ever breaks.
+- **Every app on a published host port, each with its own login.** Sonarr, Radarr, Prowlarr,
+  Bazarr, Maintainerr, qBittorrent, Jellyfin and Seerr all bind their host port; Glance links to
+  them by `IP:port`. Sonarr/Radarr/Prowlarr use Forms auth with **Authentication Required:
+  Disabled for Local Addresses** — a password exists (`vault_arr_password`) but is never asked
+  for on the LAN. ⚠️ Never set them back to `External`: that trusts anything that reaches them,
+  and it was only defensible while the ports were closed and NPM was the sole route in.
 
-- **Enforcement: media-stack host ports unpublished.** Sonarr, Radarr, Prowlarr, Bazarr,
-  Maintainerr and qBittorrent's WebUI no longer bind host ports — NPM is the only route, so
-  Authelia can't be walked around at `beelink-ip:port`. Sonarr/Radarr/Prowlarr are set to
-  **Authentication Method: External** (they trust the proxy, no second login). ⚠️ Those two
-  changes are a pair: re-publishing a port without reverting its auth method leaves that app
-  wide open. Jellyfin `:8096` and Seerr `:5055` stay published on purpose — TV clients and the
-  mobile app need them, and neither is behind forward auth.
-
-- **Shared external `homelab` docker network** — **done.** `npm`, `authelia`, `lldap`,
-  `jellyfin`, `gluetun`, the five *arr apps, `uptime-kuma` and `glance` all resolve each other by
-  container name; the subnet is pinned in `group_vars` because gluetun's firewall names it.
-  Uptime Kuma's five affected monitors were repointed at container names and it now also watches
-  Authelia + LLDAP (18 monitors, all green). Glance uses `check-url` to probe internally while
-  its tiles still link to the `*.media.home` addresses, and lists the portal + directory under
-  *Infrastructure*.
+- **Shared external `homelab` docker network** — **done.** `npm`, `jellyfin`, `gluetun`, the
+  five *arr apps, `mealie`, `uptime-kuma` and `glance` all resolve each other by container name;
+  the subnet is pinned in `group_vars` because gluetun's firewall names it. Created by the
+  `docker` role (it was the `identity` role's job until that role was removed).
+  Uptime Kuma probes the containers it can't reach by host port (gluetun/qBittorrent) across it;
+  Glance links every tile by `IP:port` and needs no `check-url` at all any more.
 
 - **AdGuard Home** (the `adguard` role). Network-wide DNS **ad/tracker/malware blocking** +
   `*.home` rewrites, in its own compose project. DNS binds `:53` on the Beelink's LAN IP (dodges

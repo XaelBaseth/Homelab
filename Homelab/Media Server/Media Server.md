@@ -36,9 +36,7 @@ Internet
    │     └── glance   (:8280 — status board + host stats)
    │
    ├── compose project: "webapps"      (/home/stacks/webapps)
-   │     ├── mealie   (:9925 — recipes/meal planning)
-   │     ├── linkding (:9090 — bookmarks)
-   │     └── docs     (:8081 — MkDocs Material, serves docs/ from the repo)
+   │     └── mealie   (:9925 — recipes/meal planning)
    │
    └── compose project: "adguard"      (/home/stacks/adguard)
          └── adguard  (DNS :53 on the LAN IP — ad/tracker blocking + *.home rewrites; admin :3000)
@@ -71,10 +69,10 @@ on the normal network.
 | **glance** | Dashboard (separate project) | 8280 | `/home/glance/config/glance.yml` |
 | **adguard** | DNS ad/tracker/malware blocking + `*.home` rewrites (own project) | 53 (DNS) / 3000 (admin) | `adguard/{conf,work}` |
 | **mealie** | Recipes + meal planning (own project, own login) | 9925 | `/home/webapps/appdata/mealie/` |
-| **linkding** | Bookmarks (own project, own login) | 9090 | `/home/webapps/appdata/linkding/` |
-| **docs** | MkDocs Material — internal documentation, no login | 8081 | `/home/stacks/webapps/mkdocs/` |
 
-Access today: `http://<beelink-ip>:<port>`. Clean `*.home` names now resolve via **AdGuard**'s
+Access is **`http://<beelink-ip>:<port>`** for everything — that is the model, not a fallback.
+Each app keeps its own login. (SSO via Authelia was tried and removed; the reasoning is in
+[[Runbook]] § *Access model*.) Clean `*.home` names additionally resolve via **AdGuard**'s
 `*.home → beelink` rewrite (per-device DNS for now — the Livebox can't push it LAN-wide until
 OPNsense) → **NPM** proxy hosts. See the AdGuard setup in [[Runbook]] and [[Roadmap]].
 

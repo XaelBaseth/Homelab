@@ -24,16 +24,3 @@ status_report_hour: 8            # 24h local time (host timezone)
 status_report_minute: 0
 status_report_disk_warn_pct: 90  # a host disk at/above this flips the report to "attention needed"
 status_report_load_warn_pct: 90  # same for sustained CPU or memory %
-
-# ── Certificate expiry reminder (checked as part of the daily digest) ──
-# The internal CA and the *.media.home wildcard are minted by the identity role and renewed
-# by hand (regenerate → re-upload into NPM), so the digest is what warns you ahead of time.
-# The path is hard-coded rather than taken from the identity role's `identity_appdata`:
-# another role's defaults are not in scope when the monitoring play runs on its own.
-status_report_cert_warn_days: 30                   # flag/red when a cert is within N days of expiry
-status_report_cert_dir: /home/identity/appdata/ca  # where the identity role stores the CA + wildcard
-status_report_certs:
-  - label: "wildcard *.media.home"
-    file: "{{ status_report_cert_dir }}/wildcard.crt"
-  - label: "Homelab Root CA"
-    file: "{{ status_report_cert_dir }}/ca.crt"

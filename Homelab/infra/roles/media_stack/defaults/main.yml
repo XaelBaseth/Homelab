@@ -11,6 +11,12 @@ seerr_image: ghcr.io/seerr-team/seerr:latest  # was fallenbagel/jellyseerr (depr
 maintainerr_image: ghcr.io/maintainerr/maintainerr:latest
 npm_image: jc21/nginx-proxy-manager:latest
 
+# qBittorrent's WebUI port on the host. Declared on the gluetun service, not on
+# qbittorrent: qbittorrent runs in gluetun's network namespace and cannot publish
+# anything itself. This app sits OUTSIDE SSO on purpose — it keeps its own login
+# instead, see [[SSO Setup]].
+qbittorrent_webui_port: 8080
+
 # Recyclarr — syncs TRaSH quality profiles + custom formats into Sonarr/Radarr.
 # Cron mode only fires on this schedule (never on container start); the first
 # push is a manual `docker exec recyclarr recyclarr sync` — see the Runbook.

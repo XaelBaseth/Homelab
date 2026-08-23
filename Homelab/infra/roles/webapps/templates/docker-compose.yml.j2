@@ -26,65 +26,7 @@ services:
       - glance.description=Recipes and meal planning
     restart: unless-stopped
 
-  linkding:
-    image: {{ linkding_image }}
-    container_name: linkding
-    environment:
-      - TZ=${TZ}
-{% if vault_linkding_superuser_password is defined and vault_linkding_superuser_password | length > 0 %}
-      # Creates the account on first start, so there's no `manage.py createsuperuser` step.
-      # Ignored on every later start once the user exists.
-      - LD_SUPERUSER_NAME={{ linkding_superuser }}
-      - LD_SUPERUSER_PASSWORD=${LINKDING_SUPERUSER_PASSWORD}
-{% else %}
-      # No vault_linkding_superuser_password set, so no account is seeded — linkding starts
-      # with an empty user table. Add the secret and re-run, or create one by hand with:
-      #   docker exec -it linkding python manage.py createsuperuser --username=<you>
-{% endif %}
-      # Becomes REQUIRED the day this moves behind NPM under an https name — without it
-      # Django rejects every POST (including the login form) as a CSRF failure:
-      # - LD_CSRF_TRUSTED_ORIGINS=https://bookmarks.{{ sso_domain }}
-    ports:
-      - {{ linkding_port }}:9090
-    volumes:
-      - ${APPDATA}/linkding:/etc/linkding/data   # SQLite db + page snapshots
-    networks:
-      - default
-      - homelab
-    labels:
-      - glance.name=Linkding
-      - glance.icon=di:linkding
-      - glance.url=http://{{ vault_beelink_host }}:{{ linkding_port }}
-      - glance.description=Bookmarks
-    restart: unless-stopped
-
-  docs:
-    image: {{ mkdocs_image }}
-    container_name: docs
-    # No `command:` — the image's own CMD is already `serve --dev-addr=0.0.0.0:8000`,
-    # and its WORKDIR is /docs. It serves the site itself; there is no separate build
-    # step and no web server container. It also watches the mount and rebuilds on change,
-    # so `ansible-playbook playbooks/webapps.yml` is all it takes to publish a page.
-    #
-    # Deliberately NOT `--strict`: strict mode exits on a broken link, which would take
-    # the whole documentation site offline over a typo.
-    ports:
-      - {{ docs_port }}:8000
-    volumes:
-      # :ro is safe — mkdocs serve builds into a temp dir and never writes here.
-      # Drop it if you ever add a plugin that caches to disk (e.g. social cards).
-      - {{ webapps_docs_dir }}:/docs:ro
-    networks:
-      - default
-      - homelab
-    labels:
-      - glance.name=Docs
-      - glance.icon=di:mkdocs
-      - glance.url=http://{{ vault_beelink_host }}:{{ docs_port }}
-      - glance.description=Internal documentation
-    restart: unless-stopped
-
 networks:
   default:
   homelab:
-    external: true                     # created by the identity role, which runs first in site.yml
+    external: true                     # created by the docker role, which runs first in site.yml

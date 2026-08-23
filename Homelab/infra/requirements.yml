@@ -13,8 +13,3 @@ collections:
   # Core POSIX modules: mount/fstab management for the storage role (/data).
   - name: ansible.posix
     version: ">=1.5.0"
-
-  # X.509 tooling: the identity role generates the local CA + the *.media.home
-  # wildcard certificate that NPM serves (Authelia refuses to run over plain HTTP).
-  - name: community.crypto
-    version: ">=2.16.0"

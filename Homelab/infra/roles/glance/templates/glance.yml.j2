@@ -31,8 +31,9 @@ pages:
                     name: Apps
 
       # ── Center: launcher ──
-      # NOTE: links use the Beelink IP:port (works today). At the OPNsense/DNS
-      # phase, swap {{ vault_beelink_host }}:PORT for the *.home names (see Roadmap).
+      # Links are Beelink IP:port throughout, deliberately: they resolve on every
+      # device regardless of DNS. Name-based access was tried behind SSO and pulled
+      # back out — see [[Roadmap]].
       - size: full
         widgets:
           - type: split-column
@@ -56,12 +57,6 @@ pages:
                       - title: Mealie
                         url: http://{{ vault_beelink_host }}:9925
                         icon: di:mealie
-                      - title: Linkding
-                        url: http://{{ vault_beelink_host }}:9090
-                        icon: di:linkding
-                      - title: Docs
-                        url: http://{{ vault_beelink_host }}:8081
-                        icon: di:mkdocs
               - type: bookmarks
                 groups:
                   - title: Monitoring
@@ -83,12 +78,6 @@ pages:
                       # Watchtower runs headless (notify-only) — no web UI, so no link
                   - title: Infra
                     links:
-                      - title: Authelia
-                        url: https://auth.{{ sso_domain }}
-                        icon: di:authelia
-                      - title: LLDAP
-                        url: http://{{ vault_beelink_host }}:17170
-                        icon: di:openldap
                       - title: Nginx Proxy Manager
                         url: http://{{ vault_beelink_host }}:81
                         icon: di:nginx-proxy-manager
@@ -124,8 +113,6 @@ pages:
               - NginxProxyManager/nginx-proxy-manager
               - AdguardTeam/AdGuardHome
               - mealie-recipes/mealie
-              - sissbruecker/linkding
-              - squidfunk/mkdocs-material
 
   # ══ Page 2: Services — the application stack, health at a glance ══
   - name: Services
@@ -143,28 +130,24 @@ pages:
                 url: http://{{ vault_beelink_host }}:5055
                 icon: di:seerr
               - title: Sonarr
-                url: https://sonarr.{{ sso_domain }}
-                check-url: http://sonarr:8989
+                url: http://{{ vault_beelink_host }}:8989
                 icon: di:sonarr
               - title: Radarr
-                url: https://radarr.{{ sso_domain }}
-                check-url: http://radarr:7878
+                url: http://{{ vault_beelink_host }}:7878
                 icon: di:radarr
               - title: Prowlarr
-                url: https://prowlarr.{{ sso_domain }}
-                check-url: http://prowlarr:9696
+                url: http://{{ vault_beelink_host }}:9696
                 icon: di:prowlarr
               - title: Bazarr
-                url: https://bazarr.{{ sso_domain }}
-                check-url: http://bazarr:6767
+                url: http://{{ vault_beelink_host }}:6767
                 icon: di:bazarr
               - title: Maintainerr
-                url: https://maintainerr.{{ sso_domain }}
-                check-url: http://maintainerr:6246
+                url: http://{{ vault_beelink_host }}:6246
                 icon: di:maintainerr
+              # Ports are written out rather than templated, same reason as page 1:
+              # other roles' defaults are not in scope when dashboard.yml runs alone.
               - title: qBittorrent
-                url: https://qbit.{{ sso_domain }}
-                check-url: http://gluetun:8080
+                url: http://{{ vault_beelink_host }}:8080
                 icon: di:qbittorrent
 
           - type: monitor
@@ -183,14 +166,6 @@ pages:
               - title: Beszel
                 url: http://{{ vault_beelink_host }}:8090
                 icon: di:beszel
-              - title: Authelia
-                url: https://auth.{{ sso_domain }}
-                check-url: http://authelia:9091/api/health
-                icon: di:authelia
-              - title: LLDAP
-                url: http://{{ vault_beelink_host }}:17170
-                check-url: http://lldap:17170/health
-                icon: di:openldap
 
           - type: monitor
             title: Apps
@@ -199,12 +174,6 @@ pages:
               - title: Mealie
                 url: http://{{ vault_beelink_host }}:9925
                 icon: di:mealie
-              - title: Linkding
-                url: http://{{ vault_beelink_host }}:9090
-                icon: di:linkding
-              - title: Docs
-                url: http://{{ vault_beelink_host }}:8081
-                icon: di:mkdocs
 
           - type: monitor
             title: Administration

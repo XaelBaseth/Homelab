@@ -86,24 +86,14 @@
     group: "1000"
     recurse: true
 
-- name: Create the NPM custom-nginx directory
-  # NPM auto-includes everything in here; the dir does not exist on a fresh install.
-  # Deliberately no owner/group: the NPM container runs as root and chowns its whole
-  # /data tree back to root:root. Managing ownership here would flip it on every
-  # single converge, which in turn fires the Reload NPM handler and bounces the proxy
-  # for no reason. nginx runs as root and reads these fine.
+- name: Remove the Authelia forward-auth endpoint from NPM's custom nginx config
+  # Left behind by the SSO experiment. NPM auto-includes everything in this directory
+  # into every proxy host, so a stale file here would keep defining a /authelia
+  # location that resolves to nothing. Safe to drop this task once it has run
+  # everywhere — it is a one-time cleanup, not ongoing state.
   ansible.builtin.file:
-    path: "{{ media_stack_appdata }}/npm/data/nginx/custom"
-    state: directory
-    mode: "0755"
-
-- name: Render the Authelia forward-auth endpoint into NPM's custom nginx config
-  # Included into every proxy host's server block, but inert until a host opts in
-  # via the `auth_request` snippet in its Advanced tab. See "SSO Setup.md".
-  ansible.builtin.template:
-    src: npm-server_proxy.conf.j2
-    dest: "{{ media_stack_appdata }}/npm/data/nginx/custom/server_proxy.conf"
-    mode: "0644"
+    path: "{{ media_stack_appdata }}/npm/data/nginx/custom/server_proxy.conf"
+    state: absent
   notify: Reload NPM
 
 - name: Deploy the media stack

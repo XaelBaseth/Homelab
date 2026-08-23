@@ -32,10 +32,8 @@ infra/
     ├── glance/                 # the dashboard (separate compose project)
     ├── monitoring/             # Uptime Kuma + Beszel + healthchecks.io cron  (OBSERVE only)
     ├── administration/         # Dozzle (logs) + Dockge (mgmt) + Watchtower (notify)  (ACT on containers)
-    └── webapps/                # Mealie + Linkding + MkDocs docs site (non-media apps)
+    └── webapps/                # Mealie (non-media apps)
 ```
-
-Note `docs/` at the **repo root** (next to `PLAN.md`) — the markdown served by the docs container.
 
 ## What's in the vault
 
@@ -45,8 +43,9 @@ Note `docs/` at the **repo root** (next to `PLAN.md`) — the markdown served by
 - `vault_cyberghost_user` / `vault_cyberghost_password` — CyberGhost OpenVPN credentials
 - `vault_cyberghost_client_cert` — OpenVPN **client certificate** (PEM, `BEGIN CERTIFICATE`)
 - `vault_cyberghost_client_key` — OpenVPN **client private key** (PEM, `BEGIN PRIVATE KEY`)
-- `vault_linkding_superuser_password` — password for the linkding superuser created on first
-  start (the username is `linkding_superuser` in `roles/webapps/defaults/main.yml`)
+- `vault_arr_password` — the shared Sonarr/Radarr/Prowlarr login (username `xael`). Their auth is
+  *Forms* with **Authentication Required: Disabled for Local Addresses**, so it is never typed
+  from the LAN; it exists so those apps aren't wide open if a port is ever exposed beyond it
 - `vault_sonarr_api_key` / `vault_radarr_api_key` — API keys recyclarr uses to push quality
   profiles (Sonarr/Radarr → Settings → General → API Key). Optional: if unset the stack still
   deploys, recyclarr just can't sync until they're filled in (see recyclarr setup below)
@@ -59,23 +58,11 @@ Note `docs/` at the **repo root** (next to `PLAN.md`) — the markdown served by
 - `vault_watchtower_notification_url` — **optional** shoutrrr URL for Watchtower's update alerts
   (Discord format `discord://TOKEN@ID`). If unset, Watchtower still runs but only logs to its own
   container (visible in Dozzle) instead of pinging Discord
-- **Identity stack** (all generated with `openssl rand -hex 32`, see [[SSO Setup]]):
-  - `vault_lldap_admin_password` — the `admin` login for LLDAP's web UI at `:17170`
-  - `vault_lldap_jwt_secret` — signs LLDAP's own session tokens
-  - `vault_lldap_key_seed` — derives LLDAP's password-encryption key. **Never change it after
-    first run** — every stored password becomes unreadable and everyone is locked out
-  - `vault_authelia_ldap_password` — password for the `authelia` service account, which Ansible
-    creates in LLDAP and keeps in sync. Also what Jellyfin's LDAP plugin binds with
-  - `vault_authelia_session_secret` — signs the SSO session cookie
-  - `vault_authelia_storage_encryption_key` — encrypts Authelia's SQLite database
-  - `vault_authelia_jwt_secret` — signs Authelia's identity-verification links
+- `vault_uptime_kuma_api_key` / `vault_beszel_user` / `vault_beszel_password` /
+  `vault_status_report_webhook` — read by the daily status digest (monitoring role)
 
-Edit secrets:
-```bash
-EDITOR="code --wait" ansible-vault edit inventory/group_vars/all/vault.yml
-```
-`.vault_pass` (in `infra/`, gitignored, `chmod 600`) is the decryption key — never commit it.
-Because `ansible.cfg` points at it, every run is unattended (no vault prompt, no `-K`).
+The `vault_lldap_*` and `vault_authelia_*` keys were removed with the SSO layer. An older backup
+of the vault will still contain them; that is expected, not corruption.
 
 ## Everyday operations
 
@@ -98,10 +85,7 @@ ansible-playbook playbooks/administration.yml
 # Deploy AdGuard Home (DNS ad-blocking + *.home names) — first run needs the wizard, see below
 ansible-playbook playbooks/adguard.yml
 
-# Deploy the identity stack (LLDAP directory + Authelia SSO) — GUI half is in [[SSO Setup]]
-ansible-playbook playbooks/identity.yml
-
-# Deploy the webapps stack (Mealie + Linkding + docs) — also republishes docs/
+# Deploy the webapps stack (Mealie)
 ansible-playbook playbooks/webapps.yml
 
 # Full converge (everything)
@@ -221,11 +205,15 @@ the Livebox and keeps working.
   and both know the `.home` zone so local names keep working on every OS. See [[Roadmap]].
 
 **Current choice (until OPNsense):** *keep the failsafe on every device* (secondary DNS =
-`192.168.1.1`) — a Beelink reboot must never look like "internet is broken". The accepted cost is
-that `.home` names aren't reliable on Windows/Android; that's fine because we **don't rely on them**
-— use the **Glance dashboard as the launcher** (`http://192.168.1.19:8280`, whose links are already
-`IP:port`, so they work on every device regardless of DNS). Clean `.home` everywhere returns at the
-OPNsense phase.
+`192.168.1.1`) — a Beelink reboot must never look like "internet is broken". The cost is that
+`.home` names are unreliable on Windows and Android, and that is acceptable because **every app
+has an `IP:port` address that always works**. Use Glance (`http://192.168.1.19:8280`) as the
+launcher; its links are `IP:port` throughout.
+
+This was briefly untrue: while SSO was in place the five *arr apps had no host port at all, so a
+resolver answering NXDOMAIN for `.home` locked you out entirely rather than merely annoying you.
+That is one of the reasons SSO was removed — see § *Access model* above. Clean `.home` everywhere,
+with a real failsafe, returns at the OPNsense phase.
 
 > **If the container won't bind `:53`** (rare — only if resolved is grabbing the LAN IP): add a
 > `/etc/systemd/resolved.conf.d/` drop-in with `DNSStubListener=no`, and repoint the host's
@@ -233,56 +221,70 @@ OPNsense phase.
 > depends on its own container. Then re-run the playbook. (Move this into the `adguard` role if it
 > ever becomes necessary — it isn't today.)
 
-## SSO — operating it
+## Access model — how you reach each app
 
-First-time setup is a separate page: **[[SSO Setup]]**. This is the day-to-day part.
+Everything is **`http://192.168.1.19:<port>`**, and that is the whole model. There is no login
+portal, no forward auth, no certificate and no name to resolve. Use Glance
+(`http://192.168.1.19:8280`) as the launcher — every tile is already an `IP:port` link.
 
-**Architecture in one line:** LLDAP holds the users → Authelia reads them and runs the login
-portal → NPM asks Authelia about every request before it reaches an app. Jellyfin is the
-exception: it validates against LLDAP *directly* over LDAP, because its TV and phone clients
-can't do the browser redirect that forward auth requires.
+| App | Port | Login |
+|---|---|---|
+| Jellyfin | 8096 | its own, local accounts |
+| Seerr | 5055 | its own |
+| Sonarr / Radarr / Prowlarr | 8989 / 7878 / 9696 | Forms, **not required from local addresses** — no prompt on the LAN |
+| Bazarr / Maintainerr | 6767 / 6246 | none (neither ships one) |
+| qBittorrent | 8080 | its own, always prompted |
+| NPM / AdGuard / Uptime Kuma / Beszel | 81 / 3000 / 3001 / 8090 | each its own |
+| Dozzle / Dockge / Glance / Mealie | 8888 / 5001 / 8280 / 9925 | each its own |
 
-**Add a person** — LLDAP at `http://192.168.1.19:17170`, *Users → Create a user*. That's the
-whole job: they can immediately reach every protected app and Jellyfin. If they'll use Jellyfin,
-match their **User ID** to any existing Jellyfin username or the LDAP plugin makes a second,
-empty account instead of reusing theirs.
+**The `.home` names still work** for the hosts NPM has always served (`seer.home`,
+`uptime.home`, `dozzle.home`, `dockge.home`, `adguard.home`, `beszel.home`, `mealie.home`),
+provided the device uses AdGuard for DNS. They are a convenience, never the only route — that is
+the lesson from the SSO experiment below.
 
-**Remove a person** — delete them in LLDAP. Authelia re-reads the directory every minute, so
-access is gone within ~60s; their existing browser session dies at its next check.
+**About the *arr login.** `Authentication Required: Disabled for Local Addresses` means a
+password exists (`vault_arr_password`, username `xael`) but is never asked for from a LAN
+address. If one of those ports is ever exposed beyond the LAN, the app asks for it. Do **not**
+set them back to `External`: that method authenticates nobody at all, and it was only safe while
+the ports were unpublished and NPM was the sole route in.
 
-**Password changes** — users do it themselves in LLDAP. Authelia is intentionally read-only
-against the directory (the service account sits in `lldap_strict_readonly`) and cannot change
-passwords, which is why its own reset flow is disabled.
+### Why SSO was removed
 
-**Protect a new app** — add its proxy host in NPM, then paste the 7-line `auth_request` snippet
-from [[SSO Setup]] into its Advanced tab. No Ansible change needed; the `/authelia` endpoint it
-calls is already included into every host.
+LLDAP + Authelia + forward auth ran for about a month and were taken back out. What it cost, in
+the order the problems appeared:
 
-**Monitoring** — Uptime Kuma watches `Authelia` (`http://authelia:9091/api/health`) and `LLDAP`
-(`http://lldap:17170/health`), both by container name over the `homelab` network, tagged
-*health* + *administration* and wired to the same Discord notification as everything else.
-Glance shows them under *Infrastructure* and links to the portal and the directory.
+- **A second prompt anyway on the apps that matter.** Forward auth only controls *reaching* an
+  app; qBittorrent still asked for its own login underneath, because it must keep one. Two
+  prompts to open a torrent client is worse than one.
+- **A hard dependency on name resolution.** Authelia only issues `Secure` cookies, so every
+  protected app had to be HTTPS under a shared two-label domain (`*.media.home`). Those names
+  exist only on our AdGuard. A Windows box that quietly kept the Livebox as its DNS could not
+  reach *anything*, and the apps had no `IP:port` fallback left, because closing those ports was
+  the whole point of the gate.
+- **A local CA to install on every device**, and a wildcard certificate to renew by hand.
+- **Real gains, honestly small on a single-user LAN:** one password instead of five, and one
+  place to revoke access. Both matter with several users and a public entry point. Neither is
+  worth the above when the entire audience is one person on one subnet.
+
+What replaced it: each app's own login, ports published, `IP:port` everywhere. The pieces removed
+were the `identity` role, `playbooks/identity.yml`, the `certs/` directory, the `*.media.home`
+NPM hosts and wildcard certificate, the forward-auth nginx snippet, and the seven
+`vault_lldap_*` / `vault_authelia_*` secrets. Jellyfin went back to local accounts.
+
+**If it ever comes back**, the honest prerequisite is DHCP-distributed DNS so `.home` resolves
+everywhere without per-device setup — that is the OPNsense phase in [[Roadmap]], not a step to
+retrofit onto the Livebox.
 
 **Why gluetun is on the `homelab` network** — qBittorrent runs inside gluetun's network
-namespace, so Glance could not health-check its WebUI once the host port went away. gluetun
-therefore joins `homelab` and sets `FIREWALL_OUTBOUND_SUBNETS={{ homelab_subnet }}` to allow
-that traffic. This is docker-local only — internet-bound traffic still has no route but the
-tunnel, so **the kill-switch is unaffected** (verified: gluetun exits on the CyberGhost IP, not
-the ISP's). The `homelab` subnet is pinned in `group_vars/all/vars.yml` precisely because that
-firewall rule names it — an auto-assigned range could change on recreate and silently break it.
-
-**Read Authelia's notifications** (there's no SMTP — the file notifier stands in):
-```bash
-docker exec authelia cat /config/notification.txt
-```
-
-**Everyone logged out after a reboot?** Expected. Sessions are in memory (no Redis), so
-restarting Authelia clears them. Logging in again is the entire fix.
-
-**Certificate expiry** — the wildcard is good until **Oct 2028**, the CA until **2036**. To
-reissue, delete `/home/identity/appdata/ca/wildcard.*` on the Beelink and re-run
-`playbooks/identity.yml`, then re-upload it in NPM. The CA stays valid, so devices don't need
-re-trusting.
+namespace, so monitoring could not health-check its WebUI by container name once the host port
+went away. gluetun therefore joins `homelab` and sets
+`FIREWALL_OUTBOUND_SUBNETS={{ homelab_subnet }}` to allow that traffic. The WebUI publishes
+`:8080` again today, so Glance probes the host IP directly — but Uptime Kuma's container-name
+checks still cross that network, so gluetun stays on it. This is docker-local only —
+internet-bound traffic still has no route but the tunnel, so **the kill-switch is unaffected**
+(verified: gluetun exits on the CyberGhost IP, not the ISP's). The `homelab` subnet is pinned in
+`group_vars/all/vars.yml` precisely because that firewall rule names it — an auto-assigned range
+could change on recreate and silently break it.
 
 ## Recyclarr (VO profiles) & Bazarr (French subs) — first-time setup
 
@@ -427,7 +429,7 @@ delete those tasks after the first post-consolidation converge.
 `roles/monitoring/defaults/main.yml` → service block in the compose template → any `appdata` dir
 in the tasks loop → `ansible-playbook playbooks/monitoring.yml`.
 
-## Webapps stack (Mealie · Linkding · docs)
+## Webapps stack (Mealie)
 
 The home for self-hosted apps that have nothing to do with media. Own compose project at
 `/home/stacks/webapps`, appdata at `/home/webapps/appdata`.
@@ -435,52 +437,22 @@ The home for self-hosted apps that have nothing to do with media. Own compose pr
 | App | URL | Login |
 |---|---|---|
 | **Mealie** — recipes, meal planning | `http://192.168.1.19:9925` | its own (`ALLOW_SIGNUP=false`) |
-| **Linkding** — bookmarks | `http://192.168.1.19:9090` | its own, superuser seeded from the vault |
-| **docs** — MkDocs Material | `http://192.168.1.19:8081` | none, read-only site |
 
-**Deliberately outside SSO**, same reasoning as monitoring/administration/adguard/glance: each app
-keeps its own login on its own published port, so a broken auth layer never costs you access. See
-the scope note in [[SSO Setup]].
+Mealie is on its own here since **linkding** (bookmarks) and **docs** (MkDocs Material, serving
+`docs/` from the repo root) were removed as unused — containers, appdata, NPM proxy hosts and the
+`docs/` sources all went with them. The stack keeps its plural name: it is where the next
+non-media app lands.
 
-**No certificate was added for this stack, and none is needed.** The `*.media.home` wildcard the
-`identity` role already signs would cover `mealie.media.home` today — a wildcard matches exactly
-one label — so if you ever want pretty HTTPS names, it is a proxy-host form in NPM and nothing
-else. All three containers are already on the `homelab` network so NPM can reach them by name.
-Two things to remember if you do it: set `LD_CSRF_TRUSTED_ORIGINS` on linkding (it's commented
-into the compose template) or Django rejects the login POST, and update Mealie's `BASE_URL`.
+Like every other stack, Mealie keeps **its own login on its own published port** — that is the
+whole access model now (§ *Access model*). Mealie is on the `homelab` network too, so if you ever
+want it behind a `mealie.home` proxy host in NPM it costs one form and nothing else; remember to
+update its `BASE_URL`, which feeds the links in its notifications.
 
 ### First-time setup
 
 1. **Mealie** — log in with the first-run default (`changeme@example.com` / `MyPassword`), then
    change the email and password immediately in *Settings → Profile*. Nobody can self-register.
-2. **Linkding** — the superuser is created on first start from `LD_SUPERUSER_NAME` (role default
-   `linkding_superuser`) and `vault_linkding_superuser_password`. Just log in and confirm.
-3. **Uptime Kuma** — add three HTTP monitors (`:9925`, `:9090`, `:8081`) in its UI, as usual.
-
-### Publishing documentation
-
-> **One-time workstation dependency:** `sudo apt install rsync`. `ansible.posix.synchronize`
-> shells out to rsync on **both** ends. The role installs it on the Beelink itself (that task is
-> in `roles/webapps/tasks/main.yml` rather than `common_packages`, so `playbooks/webapps.yml`
-> works standalone), but Ansible cannot bootstrap its own control node.
-
-The pages are plain markdown in **`docs/` at the repo root** — *not* the Obsidian vault. Write a
-`.md`, then:
-
-```bash
-ansible-playbook playbooks/webapps.yml
-```
-
-That rsyncs `docs/` onto the Beelink (with `delete: true`, so a page removed from git disappears
-from the site) and the container picks it up by itself — `mkdocs serve` watches the mount and
-rebuilds in place. **Nothing restarts**, which is why there is no handler on those tasks. The
-sidebar comes from the file tree, so there is no `nav` to maintain; prefix filenames with numbers
-if you need to force ordering.
-
-⚠️ **Obsidian `[[wikilinks]]` do not render** — use `[text](other-page.md)`. Making wikilinks work
-needs a third-party MkDocs plugin, and any plugin not bundled in `squidfunk/mkdocs-material` would
-force a custom Dockerfile, taking the stack off the plain-pull path Watchtower relies on. Same
-reason `mkdocs.yml.j2` only lists `search`.
+2. **Uptime Kuma** — add an HTTP monitor for `:9925` in its UI, as usual.
 
 **Adding a service** mirrors the media-stack flow: image tag in `roles/webapps/defaults/main.yml`
 → service block in the compose template → any `appdata` dir in the tasks loop → Glance bookmark +
