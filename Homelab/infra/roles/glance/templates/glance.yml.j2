@@ -126,7 +126,8 @@ pages:
                       - title: Dockge
                         url: http://dockge.{{ local_domain }}
                         icon: di:dockge
-                      # Watchtower runs headless (notify-only) — no web UI, so no link
+                      # Watchtower has no web UI, so no link: it pulls and recreates outdated
+                      # containers every Saturday 08:00 and posts a summary to Discord
                   - title: Infra
                     links:
                       - title: Nginx Proxy Manager
