@@ -1,2 +1,6 @@
 glance_image: glanceapp/glance:latest
 glance_dir: "{{ stacks_root }}/glance"
+
+# Jellyfin user whose progress the "Continue Watching" widget shows (the name you log in
+# with). Empty = the first user Jellyfin returns, fine for a single-user server.
+glance_jellyfin_user: ""

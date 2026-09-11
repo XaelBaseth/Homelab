@@ -85,8 +85,90 @@ pages:
                         url: http://adguard.{{ local_domain }}
                         icon: di:adguard-home
 
+      # custom-api widgets call Jellyfin/Sonarr by container name over the homelab network;
+      # the links they render use the *.home names, which the browser resolves. Their Go
+      # templates are wrapped in Jinja raw blocks so Ansible leaves the Go braces alone.
       - size: small
         widgets:
+{% if vault_jellyfin_api_key is defined and vault_jellyfin_api_key | length > 0 %}
+          # In-progress films/episodes (Resume), then the next unwatched episode of each show
+          # (Next Up), minus the ones already listed above.
+          - type: custom-api
+            title: Continue Watching
+            cache: 5m
+            url: http://jellyfin:8096/Users
+            headers:
+              Authorization: MediaBrowser Token="${JELLYFIN_API_KEY}"
+            options:
+              user-name: "{{ glance_jellyfin_user }}"
+              public-url: http://jellyfin.{{ local_domain }}
+            template: |
+              {% raw %}{{ $user := .Options.StringOr "user-name" "" }}
+              {{ $public := .Options.StringOr "public-url" "" }}
+              {{ $auth := "MediaBrowser Token=\"${JELLYFIN_API_KEY}\"" }}
+              {{ $uid := "" }}
+              {{ range .JSON.Array "" }}
+                {{ if and (eq $uid "") (or (eq $user "") (eq (.String "Name") $user)) }}{{ $uid = .String "Id" }}{{ end }}
+              {{ end }}
+              {{ if eq $uid "" }}
+                <p class="color-negative">Jellyfin user "{{ $user }}" not found.</p>
+              {{ else }}
+                {{ $resume := newRequest "http://jellyfin:8096/UserItems/Resume" | withHeader "Authorization" $auth | withParameter "userId" $uid | withParameter "mediaTypes" "Video" | withParameter "limit" "8" | getResponse }}
+                {{ $nextup := newRequest "http://jellyfin:8096/Shows/NextUp" | withHeader "Authorization" $auth | withParameter "userId" $uid | withParameter "limit" "8" | getResponse }}
+                {{ $seen := "" }}
+                <ul class="list list-gap-10 collapsible-container" data-collapse-after="5">
+                {{ range $resume.JSON.Array "Items" }}
+                  {{ $seen = concat $seen " " (.String "Id") }}
+                  <li>
+                    <a class="size-h4 color-highlight block text-truncate" href="{{ $public }}/web/#/details?id={{ .String "Id" }}" target="_blank" rel="noreferrer">{{ if eq (.String "Type") "Episode" }}{{ .String "SeriesName" }}{{ else }}{{ .String "Name" }}{{ end }}</a>
+                    <div class="size-h6 text-truncate">{{ if eq (.String "Type") "Episode" }}{{ printf "S%02dE%02d" (.Int "ParentIndexNumber") (.Int "IndexNumber") }} · {{ .String "Name" }}{{ else }}Movie · {{ .Int "ProductionYear" }}{{ end }}</div>
+                    <div class="progress-bar margin-top-5" style="height: 0.6rem"><div class="progress-value" style="--percent: {{ .Float "UserData.PlayedPercentage" }}"></div></div>
+                  </li>
+                {{ end }}
+                {{ range $nextup.JSON.Array "Items" }}
+                  {{ if not (findMatch (.String "Id") $seen) }}
+                  <li>
+                    <a class="size-h4 color-highlight block text-truncate" href="{{ $public }}/web/#/details?id={{ .String "Id" }}" target="_blank" rel="noreferrer">{{ .String "SeriesName" }}</a>
+                    <div class="size-h6 text-truncate">Next: {{ printf "S%02dE%02d" (.Int "ParentIndexNumber") (.Int "IndexNumber") }} · {{ .String "Name" }}</div>
+                  </li>
+                  {{ end }}
+                {{ else }}
+                  {{ if eq $seen "" }}<li class="color-subdue">Nothing in progress.</li>{{ end }}
+                {{ end }}
+                </ul>
+              {{ end }}{% endraw %}
+
+{% endif %}
+{% if vault_sonarr_api_key is defined and vault_sonarr_api_key | length > 0 %}
+          # Episodes of monitored series airing in the next 30 days (Sonarr calendar).
+          # Dates are shown in the container's TZ (set in docker-compose).
+          - type: custom-api
+            title: Upcoming Episodes
+            cache: 1h
+            options:
+              public-url: http://sonarr.{{ local_domain }}
+            template: |
+              {% raw %}{{ $public := .Options.StringOr "public-url" "" }}
+              {{ $cal := newRequest "http://sonarr:8989/api/v3/calendar" | withHeader "X-Api-Key" "${SONARR_API_KEY}" | withParameter "start" (now | startOfDay | formatTime "rfc3339") | withParameter "end" (offsetNow "720h" | formatTime "rfc3339") | withParameter "includeSeries" "true" | getResponse }}
+              {{ if ne $cal.Response.StatusCode 200 }}
+                <p class="color-negative">Sonarr answered {{ $cal.Response.StatusCode }}.</p>
+              {{ else }}
+                <ul class="list list-gap-10 collapsible-container" data-collapse-after="6">
+                {{ range sortByTime "airDateUtc" "rfc3339" "asc" ($cal.JSON.Array "") }}
+                  <li>
+                    <div class="flex justify-between items-center gap-10">
+                      <a class="size-h4 color-highlight text-truncate" href="{{ $public }}/series/{{ .String "series.titleSlug" }}" target="_blank" rel="noreferrer">{{ .String "series.title" }}</a>
+                      <span class="shrink-0 size-h6">{{ (parseTime "rfc3339" (.String "airDateUtc")).Local | formatTime "02/01 15:04" }}</span>
+                    </div>
+                    <div class="size-h6 text-truncate">{{ printf "S%02dE%02d" (.Int "seasonNumber") (.Int "episodeNumber") }} · {{ .String "title" }}{{ if .Bool "hasFile" }} · <span class="color-positive">available</span>{{ end }}</div>
+                  </li>
+                {{ else }}
+                  <li class="color-subdue">Nothing airing in the next 30 days.</li>
+                {{ end }}
+                </ul>
+              {{ end }}{% endraw %}
+
+{% endif %}
           - type: releases
             title: App Releases
             cache: 6h

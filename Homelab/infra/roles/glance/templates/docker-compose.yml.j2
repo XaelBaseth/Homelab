@@ -3,7 +3,9 @@ services:
     image: {{ glance_image }}
     container_name: glance
     env_file:
-      - .env                        # GLANCE_GITHUB_TOKEN for the releases widget
+      - .env                        # GLANCE_GITHUB_TOKEN, JELLYFIN_API_KEY, SONARR_API_KEY
+    environment:
+      - TZ={{ timezone }}           # air dates in the Upcoming Episodes widget show in local time
     ports:
       - 8280:8080
     volumes:
