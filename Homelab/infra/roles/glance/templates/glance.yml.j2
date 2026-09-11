@@ -31,9 +31,9 @@ pages:
                     name: Apps
 
       # ── Center: launcher ──
-      # Links are Beelink IP:port throughout, deliberately: they resolve on every
-      # device regardless of DNS. Name-based access was tried behind SSO and pulled
-      # back out — see [[Roadmap]].
+      # Links use the *.home names: AdGuard is the LAN's DHCP server, so every device resolves
+      # them. Each name is an NPM proxy host, spelled as NPM has it (seer, qbit). NPM's own admin
+      # has no proxy host, so it stays on IP:port — which every app still answers on, too.
       - size: full
         widgets:
           - type: split-column
@@ -44,10 +44,10 @@ pages:
                   - title: Media
                     links:
                       - title: Jellyfin
-                        url: http://{{ vault_beelink_host }}:8096
+                        url: http://jellyfin.{{ local_domain }}
                         icon: di:jellyfin
                       - title: Seerr
-                        url: http://{{ vault_beelink_host }}:5055
+                        url: http://seer.{{ local_domain }}
                         icon: di:seerr
                   # Ports are written out rather than templated: they are webapps role
                   # defaults, and role defaults are not in scope when playbooks/dashboard.yml
@@ -55,25 +55,25 @@ pages:
                   - title: Apps
                     links:
                       - title: Mealie
-                        url: http://{{ vault_beelink_host }}:9925
+                        url: http://mealie.{{ local_domain }}
                         icon: di:mealie
               - type: bookmarks
                 groups:
                   - title: Monitoring
                     links:
                       - title: Uptime Kuma
-                        url: http://{{ vault_beelink_host }}:3001
+                        url: http://uptime.{{ local_domain }}
                         icon: di:uptime-kuma
                       - title: Beszel
-                        url: http://{{ vault_beelink_host }}:8090
+                        url: http://beszel.{{ local_domain }}
                         icon: di:beszel
                   - title: Administration
                     links:
                       - title: Dozzle
-                        url: http://{{ vault_beelink_host }}:8888
+                        url: http://dozzle.{{ local_domain }}
                         icon: di:dozzle
                       - title: Dockge
-                        url: http://{{ vault_beelink_host }}:5001
+                        url: http://dockge.{{ local_domain }}
                         icon: di:dockge
                       # Watchtower runs headless (notify-only) — no web UI, so no link
                   - title: Infra
@@ -82,7 +82,7 @@ pages:
                         url: http://{{ vault_beelink_host }}:81
                         icon: di:nginx-proxy-manager
                       - title: AdGuard Home
-                        url: http://{{ vault_beelink_host }}:3000
+                        url: http://adguard.{{ local_domain }}
                         icon: di:adguard-home
 
       - size: small
@@ -119,35 +119,46 @@ pages:
     columns:
       - size: full
         widgets:
+          # url = the name you click; check-url = the IP:port Glance probes. Containers can't
+          # resolve *.home (Docker forwards to the host's resolvers, Livebox + Quad9, never
+          # AdGuard), so probing the names would show every service down.
           - type: monitor
             title: Media Stack
             cache: 1m
             sites:
               - title: Jellyfin
-                url: http://{{ vault_beelink_host }}:8096
+                url: http://jellyfin.{{ local_domain }}
+                check-url: http://{{ vault_beelink_host }}:8096
                 icon: di:jellyfin
               - title: Seerr
-                url: http://{{ vault_beelink_host }}:5055
+                url: http://seer.{{ local_domain }}
+                check-url: http://{{ vault_beelink_host }}:5055
                 icon: di:seerr
               - title: Sonarr
-                url: http://{{ vault_beelink_host }}:8989
+                url: http://sonarr.{{ local_domain }}
+                check-url: http://{{ vault_beelink_host }}:8989
                 icon: di:sonarr
               - title: Radarr
-                url: http://{{ vault_beelink_host }}:7878
+                url: http://radarr.{{ local_domain }}
+                check-url: http://{{ vault_beelink_host }}:7878
                 icon: di:radarr
               - title: Prowlarr
-                url: http://{{ vault_beelink_host }}:9696
+                url: http://prowlarr.{{ local_domain }}
+                check-url: http://{{ vault_beelink_host }}:9696
                 icon: di:prowlarr
               - title: Bazarr
-                url: http://{{ vault_beelink_host }}:6767
+                url: http://bazarr.{{ local_domain }}
+                check-url: http://{{ vault_beelink_host }}:6767
                 icon: di:bazarr
               - title: Maintainerr
-                url: http://{{ vault_beelink_host }}:6246
+                url: http://maintainerr.{{ local_domain }}
+                check-url: http://{{ vault_beelink_host }}:6246
                 icon: di:maintainerr
               # Ports are written out rather than templated, same reason as page 1:
               # other roles' defaults are not in scope when dashboard.yml runs alone.
               - title: qBittorrent
-                url: http://{{ vault_beelink_host }}:8080
+                url: http://qbit.{{ local_domain }}
+                check-url: http://{{ vault_beelink_host }}:8080
                 icon: di:qbittorrent
 
           - type: monitor
@@ -158,13 +169,16 @@ pages:
                 url: http://{{ vault_beelink_host }}:81
                 icon: di:nginx-proxy-manager
               - title: AdGuard Home
-                url: http://{{ vault_beelink_host }}:3000
+                url: http://adguard.{{ local_domain }}
+                check-url: http://{{ vault_beelink_host }}:3000
                 icon: di:adguard-home
               - title: Uptime Kuma
-                url: http://{{ vault_beelink_host }}:3001
+                url: http://uptime.{{ local_domain }}
+                check-url: http://{{ vault_beelink_host }}:3001
                 icon: di:uptime-kuma
               - title: Beszel
-                url: http://{{ vault_beelink_host }}:8090
+                url: http://beszel.{{ local_domain }}
+                check-url: http://{{ vault_beelink_host }}:8090
                 icon: di:beszel
 
           - type: monitor
@@ -172,7 +186,8 @@ pages:
             cache: 1m
             sites:
               - title: Mealie
-                url: http://{{ vault_beelink_host }}:9925
+                url: http://mealie.{{ local_domain }}
+                check-url: http://{{ vault_beelink_host }}:9925
                 icon: di:mealie
 
           - type: monitor
@@ -180,10 +195,12 @@ pages:
             cache: 1m
             sites:
               - title: Dozzle
-                url: http://{{ vault_beelink_host }}:8888
+                url: http://dozzle.{{ local_domain }}
+                check-url: http://{{ vault_beelink_host }}:8888
                 icon: di:dozzle
               - title: Dockge
-                url: http://{{ vault_beelink_host }}:5001
+                url: http://dockge.{{ local_domain }}
+                check-url: http://{{ vault_beelink_host }}:5001
                 icon: di:dockge
 
   - name: Containers

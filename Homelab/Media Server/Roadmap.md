@@ -49,8 +49,8 @@ stack from home today; these are the "next phase" items — most tied to standin
     one form if you ever want the name; the app is already on the `homelab` network for it.
 
 - **Every app on a published host port, each with its own login.** Sonarr, Radarr, Prowlarr,
-  Bazarr, Maintainerr, qBittorrent, Jellyfin and Seerr all bind their host port; Glance links to
-  them by `IP:port`. Sonarr/Radarr/Prowlarr use Forms auth with **Authentication Required:
+  Bazarr, Maintainerr, qBittorrent, Jellyfin and Seerr all bind their host port — the route that
+  always works, DNS or not. Sonarr/Radarr/Prowlarr use Forms auth with **Authentication Required:
   Disabled for Local Addresses** — a password exists (`vault_arr_password`) but is never asked
   for on the LAN. ⚠️ Never set them back to `External`: that trusts anything that reaches them,
   and it was only defensible while the ports were closed and NPM was the sole route in.
@@ -60,7 +60,8 @@ stack from home today; these are the "next phase" items — most tied to standin
   the subnet is pinned in `group_vars` because gluetun's firewall names it. Created by the
   `docker` role (it was the `identity` role's job until that role was removed).
   Uptime Kuma probes the containers it can't reach by host port (gluetun/qBittorrent) across it;
-  Glance links every tile by `IP:port` and needs no `check-url` at all any more.
+  Glance links every tile by its `*.home` name and probes `IP:port` through `check-url` (containers
+  can't resolve `*.home`).
 
 - **AdGuard Home** (the `adguard` role). The LAN's **DNS and DHCP server**: ad/tracker/malware
   blocking + `*.home` rewrites for every device in the house, in its own compose project. Host

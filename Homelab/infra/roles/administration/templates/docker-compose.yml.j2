@@ -11,7 +11,7 @@ services:
     labels:                                            # Glance docker-containers widget presentation
       - glance.name=Dozzle
       - glance.icon=di:dozzle
-      - glance.url=http://{{ vault_beelink_host }}:{{ dozzle_port }}
+      - glance.url=http://dozzle.{{ local_domain }}
       - glance.description=Live container logs
     restart: unless-stopped
 
@@ -30,7 +30,7 @@ services:
     labels:
       - glance.name=Dockge
       - glance.icon=di:dockge
-      - glance.url=http://{{ vault_beelink_host }}:{{ dockge_port }}
+      - glance.url=http://dockge.{{ local_domain }}
       - glance.description=Compose stack management
     restart: unless-stopped
 
@@ -51,6 +51,6 @@ services:
     labels:                                            # headless — this label set is its only dashboard presence
       - glance.name=Watchtower
       - glance.icon=di:watchtower
-      - glance.url=http://{{ vault_beelink_host }}:{{ dozzle_port }}
+      - glance.url=http://dozzle.{{ local_domain }}
       - glance.description=Auto-updater — pulls weekly, alerts to Discord; logs in Dozzle
     restart: unless-stopped

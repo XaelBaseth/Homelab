@@ -22,7 +22,7 @@ services:
     labels:                            # Glance docker-containers widget presentation
       - glance.name=Mealie
       - glance.icon=di:mealie
-      - glance.url=http://{{ vault_beelink_host }}:{{ mealie_port }}
+      - glance.url=http://mealie.{{ local_domain }}
       - glance.description=Recipes and meal planning
     restart: unless-stopped
 

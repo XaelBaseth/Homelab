@@ -165,6 +165,11 @@ for the Beelink in the `common` role); the switch itself is clicks, in this orde
 4. **Prepare AdGuard's DHCP** — *Settings → DHCP settings*: interface `enp1s0`, gateway
    `192.168.1.1`, mask `255.255.255.0`, range `192.168.1.100`–`192.168.1.199` (the Beelink's `.19`
    stays outside it), lease 24 h. Add the static leases from step 2. **Don't enable it yet.**
+   - **The UI won't save IPv4 alone** — it demands the IPv6 fields too. Don't fill them (that
+     starts DHCPv6 + router advertisements on a LAN whose IPv6 is off). Write the IPv4 half into
+     `conf/AdGuardHome.yaml` instead, container stopped: `dhcp.interface_name: enp1s0` and, under
+     `dhcpv4`, `gateway_ip`, `subnet_mask`, `range_start`, `range_end`. Start it, reload the page.
+   - Static leases are refused (`server is unconfigured`) until that IPv4 config is saved.
 5. **Switch:** turn the Livebox's DHCP server **off**, then **enable** AdGuard's straight away
    (*Check DHCP servers* should now find none). Never leave both on — two DHCP servers on one LAN
    hand out conflicting answers.
@@ -215,7 +220,7 @@ that holds a lease, DNS or not.
 
 Everything is **`http://192.168.1.19:<port>`**, and that is the whole model. There is no login
 portal, no forward auth, no certificate and no name to resolve. Use Glance
-(`http://192.168.1.19:8280`) as the launcher — every tile is already an `IP:port` link.
+(`http://192.168.1.19:8280`) as the launcher — its tiles link to the `*.home` names below.
 
 | App | Port | Login |
 |---|---|---|
@@ -230,7 +235,10 @@ portal, no forward auth, no certificate and no name to resolve. Use Glance
 **The `.home` names work on every device** once AdGuard hands out DNS by DHCP (see *LAN-wide
 rollout* in the AdGuard section): one NPM proxy host per app. They are the everyday route, never
 the only one — every app keeps its `IP:port`, which is the lesson from the SSO experiment below.
-Glance switches its links to the names only after the DHCP switch has held for a while.
+Glance links to the names; its *Services* monitors still probe `IP:port` (`check-url`), because
+containers resolve through the host's resolvers (Livebox + Quad9), which don't know `*.home`.
+The names are NPM's, typos included: `seer.home` and `qbit.home`. NPM's own admin (`:81`) has no
+proxy host and stays on `IP:port`.
 
 **About the *arr login.** `Authentication Required: Disabled for Local Addresses` means a
 password exists (`vault_arr_password`, username `xael`) but is never asked for from a LAN
