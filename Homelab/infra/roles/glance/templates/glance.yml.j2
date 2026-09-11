@@ -32,8 +32,8 @@ pages:
 
       # ── Center: launcher ──
       # Links use the *.home names: AdGuard is the LAN's DHCP server, so every device resolves
-      # them. Each name is an NPM proxy host, spelled as NPM has it (seer, qbit). NPM's own admin
-      # has no proxy host, so it stays on IP:port — which every app still answers on, too.
+      # them. Each name is an NPM proxy host, spelled as NPM has it (qbit is short on purpose).
+      # Every app still answers on IP:port too, if DNS is ever down.
       - size: full
         widgets:
           - type: split-column
@@ -47,7 +47,7 @@ pages:
                         url: http://jellyfin.{{ local_domain }}
                         icon: di:jellyfin
                       - title: Seerr
-                        url: http://seer.{{ local_domain }}
+                        url: http://seerr.{{ local_domain }}
                         icon: di:seerr
                   # Ports are written out rather than templated: they are webapps role
                   # defaults, and role defaults are not in scope when playbooks/dashboard.yml
@@ -79,7 +79,7 @@ pages:
                   - title: Infra
                     links:
                       - title: Nginx Proxy Manager
-                        url: http://{{ vault_beelink_host }}:81
+                        url: http://npm.{{ local_domain }}
                         icon: di:nginx-proxy-manager
                       - title: AdGuard Home
                         url: http://adguard.{{ local_domain }}
@@ -131,7 +131,7 @@ pages:
                 check-url: http://{{ vault_beelink_host }}:8096
                 icon: di:jellyfin
               - title: Seerr
-                url: http://seer.{{ local_domain }}
+                url: http://seerr.{{ local_domain }}
                 check-url: http://{{ vault_beelink_host }}:5055
                 icon: di:seerr
               - title: Sonarr
@@ -166,7 +166,8 @@ pages:
             cache: 1m
             sites:
               - title: Nginx Proxy Manager
-                url: http://{{ vault_beelink_host }}:81
+                url: http://npm.{{ local_domain }}
+                check-url: http://{{ vault_beelink_host }}:81
                 icon: di:nginx-proxy-manager
               - title: AdGuard Home
                 url: http://adguard.{{ local_domain }}

@@ -237,8 +237,8 @@ rollout* in the AdGuard section): one NPM proxy host per app. They are the every
 the only one — every app keeps its `IP:port`, which is the lesson from the SSO experiment below.
 Glance links to the names; its *Services* monitors still probe `IP:port` (`check-url`), because
 containers resolve through the host's resolvers (Livebox + Quad9), which don't know `*.home`.
-The names are NPM's, typos included: `seer.home` and `qbit.home`. NPM's own admin (`:81`) has no
-proxy host and stays on `IP:port`.
+Glance uses the names exactly as NPM has them — `qbit.home` is short on purpose, and NPM's own
+admin is `npm.home`. Renaming a proxy host in NPM means updating `glance.yml.j2` to match.
 
 **About the *arr login.** `Authentication Required: Disabled for Local Addresses` means a
 password exists (`vault_arr_password`, username `xael`) but is never asked for from a LAN
