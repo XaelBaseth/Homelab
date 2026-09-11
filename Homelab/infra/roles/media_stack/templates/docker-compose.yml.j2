@@ -138,6 +138,7 @@ services:
       - PUID=${PUID}
       - PGID=${PGID}
       - TZ=${TZ}
+      - DOCKER_MODS=linuxserver/mods:jellyfin-opencl-intel   # Intel OpenCL runtime — GPU tone mapping (HDR→SDR)
     group_add:
       - "{{ jellyfin_render_gid }}"   # render — Quick Sync (renderD128)
       - "{{ jellyfin_video_gid }}"    # video
