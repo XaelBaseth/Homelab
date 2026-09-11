@@ -3,7 +3,7 @@ services:
     image: {{ glance_image }}
     container_name: glance
     env_file:
-      - .env                        # GLANCE_GITHUB_TOKEN, JELLYFIN_API_KEY, SONARR_API_KEY
+      - .env                        # GLANCE_GITHUB_TOKEN, JELLYFIN_API_KEY, SONARR_API_KEY, BESZEL_LOGIN
     environment:
       - TZ={{ timezone }}           # air dates in the Upcoming Episodes widget show in local time
     ports:
@@ -11,8 +11,7 @@ services:
     volumes:
       - ./config/glance.yml:/app/config/glance.yml
       - ./assets:/app/assets        # served at /assets/ (custom.css)
-      - /data:/mnt/host/data:ro     # media drive, for disk stats
-      - /home:/mnt/host/home:ro     # docker + appdata, for disk stats
+      # No host disk mounts: server stats come from Beszel's API, not from Glance itself.
       - /var/run/docker.sock:/var/run/docker.sock:ro   # docker-containers widget (live status of every container, incl. headless Watchtower)
     networks:
       - default

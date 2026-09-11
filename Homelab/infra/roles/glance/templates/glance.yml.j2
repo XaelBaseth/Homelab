@@ -19,16 +19,67 @@ pages:
             units: metric
             hour-format: 24h
 
-          - type: server-stats
-            servers:
-              - type: local
-                name: Beelink
-                hide-mountpoints-by-default: false
-                mountpoints:
-                  /mnt/host/data:
-                    name: Media
-                  /mnt/host/home:
-                    name: Apps
+{% if vault_beszel_password is defined and vault_beszel_password | length > 0 %}
+          # Host metrics from Beszel, so the dashboard, Beszel and the daily digest show the
+          # same numbers. The hub is not on the homelab network: Glance uses its published
+          # port. Beszel's root disk (dp) is sda6 = /home, where Docker lives ("Apps"). The
+          # /data media drive ("Media") is an extra filesystem, which Beszel keys by device
+          # name, not by the /extra-filesystems/data folder: set media-fs to that name.
+          # The login body is JSON built by Ansible (env.j2) and read here as a Go raw string,
+          # so a password with quotes or backslashes still works.
+          - type: custom-api
+            title: Server
+            cache: 1m
+            options:
+              hub-url: http://{{ vault_beelink_host }}:8090
+              public-url: http://beszel.{{ local_domain }}
+              media-fs: sdb1
+            template: |
+              {% raw %}{{ $hub := .Options.StringOr "hub-url" "" }}
+              {{ $public := .Options.StringOr "public-url" "" }}
+              {{ $media := concat "info.efs." (.Options.StringOr "media-fs" "") }}
+              {{ $login := `${BESZEL_LOGIN}` }}
+              {{ $auth := newRequest (concat $hub "/api/collections/users/auth-with-password") | withHeader "Content-Type" "application/json" | withStringBody $login | getResponse }}
+              {{ if ne $auth.Response.StatusCode 200 }}
+                {{ $auth = newRequest (concat $hub "/api/collections/_superusers/auth-with-password") | withHeader "Content-Type" "application/json" | withStringBody $login | getResponse }}
+              {{ end }}
+              {{ if ne $auth.Response.StatusCode 200 }}
+                <p class="color-negative">Beszel login failed (HTTP {{ $auth.Response.StatusCode }}).</p>
+              {{ else }}
+                {{ $systems := newRequest (concat $hub "/api/collections/systems/records") | withParameter "sort" "name" | withHeader "Authorization" ($auth.JSON.String "token") | getResponse }}
+                <ul class="list list-gap-20">
+                {{ range $systems.JSON.Array "items" }}
+                  <li>
+                    <div class="flex justify-between items-center gap-10">
+                      <a class="size-h4 color-highlight" href="{{ $public }}" target="_blank" rel="noreferrer">{{ .String "name" }}</a>
+                      <span class="size-h6 {{ if eq (.String "status") "up" }}color-positive{{ else }}color-negative{{ end }}">{{ .String "status" }} · {{ if lt (.Float "info.u") 86400.0 }}{{ div (.Float "info.u") 3600 | toInt }}h{{ else }}{{ div (.Float "info.u") 86400 | toInt }}d{{ end }}{{ if .Exists "info.dt" }} · {{ printf "%.0f" (.Float "info.dt") }}°C{{ end }}</span>
+                    </div>
+                    <div class="margin-top-10">
+                      <div class="flex justify-between size-h6"><span>CPU</span><span class="color-highlight">{{ printf "%.0f" (.Float "info.cpu") }}%</span></div>
+                      <div class="progress-bar" style="height: 0.6rem"><div class="progress-value{{ if ge (.Float "info.cpu") 85.0 }} progress-value-notice{{ end }}" style="--percent: {{ .Float "info.cpu" }}"></div></div>
+                    </div>
+                    <div class="margin-top-7">
+                      <div class="flex justify-between size-h6"><span>RAM</span><span class="color-highlight">{{ printf "%.0f" (.Float "info.mp") }}%</span></div>
+                      <div class="progress-bar" style="height: 0.6rem"><div class="progress-value{{ if ge (.Float "info.mp") 85.0 }} progress-value-notice{{ end }}" style="--percent: {{ .Float "info.mp" }}"></div></div>
+                    </div>
+                    <div class="margin-top-7">
+                      <div class="flex justify-between size-h6"><span>Apps</span><span class="color-highlight">{{ printf "%.0f" (.Float "info.dp") }}%</span></div>
+                      <div class="progress-bar" style="height: 0.6rem"><div class="progress-value{{ if ge (.Float "info.dp") 85.0 }} progress-value-notice{{ end }}" style="--percent: {{ .Float "info.dp" }}"></div></div>
+                    </div>
+                    {{ if .Exists $media }}
+                    <div class="margin-top-7">
+                      <div class="flex justify-between size-h6"><span>Media</span><span class="color-highlight">{{ printf "%.0f" (.Float $media) }}%</span></div>
+                      <div class="progress-bar" style="height: 0.6rem"><div class="progress-value{{ if ge (.Float $media) 85.0 }} progress-value-notice{{ end }}" style="--percent: {{ .Float $media }}"></div></div>
+                    </div>
+                    {{ end }}
+                  </li>
+                {{ else }}
+                  <li class="color-subdue">No systems in Beszel.</li>
+                {{ end }}
+                </ul>
+              {{ end }}{% endraw %}
+
+{% endif %}
 
       # ── Center: launcher ──
       # Links use the *.home names: AdGuard is the LAN's DHCP server, so every device resolves
