@@ -196,7 +196,136 @@ pages:
               - AdguardTeam/AdGuardHome
               - mealie-recipes/mealie
 
-  # ══ Page 2: Services — the application stack, health at a glance ══
+  # ══ Page 2: Tech — DevOps watch ══════════════════════════════
+  # Every feed below was checked to answer with recent items. Left out: Reddit (429s
+  # unauthenticated, from the server too), CERT-FR alerts (last one Jan 2024),
+  # Last Week in AWS (idle since April), DevOps Weekly and KubeWeekly (no feed).
+  # The collapse-after values are sized so the page fits one 1080p screen unexpanded.
+  - name: Tech
+    columns:
+      - size: small
+        widgets:
+          - type: rss
+            title: RudeOps Radar            # daily picks; the weekly newsletter is in the center column
+            style: vertical-list
+            single-line-titles: true
+            cache: 1h
+            limit: 15
+            collapse-after: 5
+            feeds:
+              - url: https://www.rudeops.com/radar/feed.xml
+
+          - type: lobsters
+            tags:
+              - devops
+              - linux
+              - security
+            limit: 15
+            collapse-after: 5
+
+      # Each tab merges its feeds by date and keeps the newest `limit` items, so a daily
+      # feed (LWN, Korben) would push a monthly one (Julia Evans) out entirely. Every feed
+      # is capped at 6 and each tab's limit sits above the sum: all sources stay visible.
+      - size: full
+        widgets:
+          - type: group
+            widgets:
+              - type: rss
+                title: Newsletters
+                style: detailed-list
+                cache: 2h
+                limit: 40
+                collapse-after: 4
+                feeds:
+                  - url: https://www.rudeops.com/feed.xml
+                    title: RudeOps
+                    limit: 6
+                  - url: https://sreweekly.com/feed/
+                    title: SRE Weekly
+                    limit: 6
+                  - url: https://blog.pragmaticengineer.com/rss/
+                    title: The Pragmatic Engineer
+                    limit: 6
+                  - url: https://blog.bytebytego.com/feed
+                    title: ByteByteGo
+                    limit: 6
+                  - url: https://selfh.st/rss/
+                    title: selfh.st
+                    limit: 6
+
+              - type: rss
+                title: Cloud Native
+                style: detailed-list
+                cache: 2h
+                limit: 40
+                collapse-after: 4
+                feeds:
+                  - url: https://kubernetes.io/feed.xml
+                    title: Kubernetes
+                    limit: 6
+                  - url: https://www.cncf.io/feed/
+                    title: CNCF
+                    limit: 6
+                  - url: https://thenewstack.io/feed/
+                    title: The New Stack
+                    limit: 6
+                  - url: https://www.docker.com/blog/feed/
+                    title: Docker
+                    limit: 6
+                  - url: https://www.hashicorp.com/blog/feed.xml
+                    title: HashiCorp
+                    limit: 6
+                  - url: https://github.blog/changelog/feed/
+                    title: GitHub Changelog
+                    limit: 6
+
+              - type: rss
+                title: Engineering
+                style: detailed-list
+                cache: 2h
+                limit: 40
+                collapse-after: 4
+                feeds:
+                  - url: https://blog.cloudflare.com/rss/
+                    title: Cloudflare
+                    limit: 6
+                  - url: https://martinfowler.com/feed.atom
+                    title: Martin Fowler
+                    limit: 6
+                  - url: https://jvns.ca/atom.xml
+                    title: Julia Evans
+                    limit: 6
+                  - url: https://lwn.net/headlines/rss
+                    title: LWN
+                    limit: 6
+
+              - type: rss
+                title: FR
+                style: detailed-list
+                cache: 2h
+                limit: 40
+                collapse-after: 4
+                feeds:
+                  - url: https://www.journalduhacker.net/rss
+                    title: Journal du hacker
+                    limit: 6
+                  - url: https://korben.info/feed
+                    title: Korben
+                    limit: 6
+                  - url: https://blog.stephane-robert.info/index.xml
+                    title: Stéphane Robert
+                    limit: 6
+                    headers:
+                      # The site answers 403 to non-browser user agents
+                      User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36
+
+      - size: small
+        widgets:
+          - type: hacker-news
+            limit: 15
+            collapse-after: 7
+
+  # ══ Page 3: Services — the application stack, health at a glance ══
   - name: Services
     columns:
       - size: full
