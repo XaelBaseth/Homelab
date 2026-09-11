@@ -1,0 +1,12 @@
+# Managed by Ansible (common role) — local edits are overwritten.
+# Static on purpose: this host runs the LAN's DHCP server (AdGuard) and can't lease from itself.
+
+source /etc/network/interfaces.d/*
+
+auto lo
+iface lo inet loopback
+
+auto {{ common_lan_interface }}
+iface {{ common_lan_interface }} inet static
+    address {{ vault_beelink_host }}/{{ common_lan_prefix }}
+    gateway {{ common_lan_gateway }}

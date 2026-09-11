@@ -108,22 +108,22 @@ ansible-playbook playbooks/update.yml
 ## AdGuard Home — first-time setup (from the Livebox to blocking)
 
 Network-wide DNS ad/tracker/malware blocking + local `*.home` names. The Ansible role deploys the
-container; the rest is a one-time wizard. **Rollout is per-device** — the Orange Livebox can't
-distribute a DNS server, so you point each device at the Beelink by hand (fully reversible; all of
-this carries over to OPNsense later). See [[Roadmap]] for the LAN-wide escalation path.
+container; the rest is a one-time wizard, then the DHCP switch. **Rollout is LAN-wide:** the
+Orange Livebox can't distribute a DNS server, so AdGuard takes over DHCP and hands itself out to
+every device (fully reversible; all of this carries over to OPNsense later).
 
 **Do the steps in this order.** The first-run **wizard is a small mandatory gate** (ports + login
 only) — you can't reach Settings until it's done. All the real config comes *after* it, in the
 dashboard. Point your devices at AdGuard **last**, so blocking + `*.home` already work before
 anything uses it.
 
-1. **Deploy:** `ansible-playbook playbooks/adguard.yml`. DNS binds `:53` on the Beelink's LAN IP
-   (dodges the systemd-resolved stub on `127.0.0.53` — no host change). Admin is on `:3000`
-   because NPM owns `:80`.
+1. **Deploy:** `ansible-playbook playbooks/adguard.yml`. The container runs on the host network
+   (DHCP needs it); systemd-resolved is inactive, so nothing competes for `:53`. Admin is on
+   `:3000` because NPM owns `:80`.
 2. **Wizard (minimal — just get to the dashboard)** → browse `http://<beelink-ip>:3000`:
    - Admin web interface: keep **port 3000**. DNS server: **port 53**. Create the admin login.
-   - On the **"Configure your devices / Router"** screen — that's **instructions only**. We do
-     per-device (and the Livebox can't set router DNS anyway), so **click straight through to
+   - On the **"Configure your devices / Router"** screen — that's **instructions only**. The
+     Livebox can't set router DNS and DHCP comes later, so **click straight through to
      "Open Dashboard" — do NOT set up any router here.**
 3. **Upstream DNS (post-wizard, in Settings — the wizard does *not* ask for this)** →
    *Settings → DNS settings* → Upstream DNS = `https://dns.quad9.net/dns-query` (DoH — encrypted,
@@ -132,10 +132,10 @@ anything uses it.
    blocklist → OISD Full** (`https://big.oisd.nl`). Confirm both are enabled.
 5. **Local names** → *Filters → DNS rewrites* → add `*.home` → `<beelink-ip>`. This makes every
    NPM proxy host (`jellyfin.home`, `uptime.home`, …) resolve — the DNS half the Livebox couldn't do.
-6. **Point your devices LAST** → set DNS = `<beelink-ip>` on the workstation and phone (Livebox
-   DHCP untouched). Watch *Query Log* light up — that's the "it works" moment.
-7. **(Optional, now unblocked)** create the NPM proxy hosts from the [[Roadmap]] table in the NPM
-   UI (`:81`) — remember **Websockets** on `uptime.home` / `beszel.home`.
+6. **NPM proxy hosts** (NPM UI `:81`): one per app, forwarding to `192.168.1.19:<published port>`,
+   with **Websockets Support** on (Jellyfin, Uptime Kuma, Beszel, Dockge and Dozzle need it).
+7. **Hand it out LAST** → the DHCP switch in *LAN-wide rollout* below. Watch *Query Log* light up
+   with every device in the house — that's the "it works" moment.
 
 **Verify:**
 ```bash
@@ -145,81 +145,71 @@ dig @<beelink-ip> doubleclick.net +short        # blocked → 0.0.0.0 (or empty/
 dig @<beelink-ip> jellyfin.home +short          # → <beelink-ip> (after the *.home rewrite)
 ```
 
-### Pointing a device at AdGuard (per-OS)
+### LAN-wide rollout — AdGuard as the DHCP server
 
-"Pointing a device" = replacing the Livebox (`192.168.1.1`) with the Beelink (`192.168.1.19`) as
-that device's DNS. Do it one device at a time. Include the **secondary** for the failsafe below.
+The Livebox can't hand out another DNS server, so AdGuard takes over DHCP entirely: every device
+that joins the network — phones, TV, guests — gets `192.168.1.19` as its only DNS, with nothing to
+set by hand. That is what makes `*.home` names work everywhere, and what puts ad-blocking on the
+TV and the phones. Ansible covers the host side (host networking for the container, a static IP
+for the Beelink in the `common` role); the switch itself is clicks, in this order:
 
-- **Linux (NetworkManager):** `nmcli -t -f NAME connection show --active` to get the name, then
-  ```bash
-  nmcli connection modify "<NAME>" ipv4.dns "192.168.1.19 192.168.1.1" ipv4.ignore-auto-dns yes
-  nmcli connection modify "<NAME>" ipv6.ignore-auto-dns yes ipv6.dns ""   # or ads leak over IPv6
-  nmcli connection up "<NAME>"
-  ```
-  Undo: `ipv4.dns "" ipv4.ignore-auto-dns no ipv6.ignore-auto-dns no`, then `connection up`.
-- **Windows 11:** Settings → **Network & internet** → Wi-Fi (or Ethernet) → click the connection →
-  **DNS server assignment → Edit → Manual** → toggle **IPv4 on** → Preferred `192.168.1.19`,
-  Alternate `192.168.1.1` → Save.
-  **IPv6 must also be handled** or Windows leaks DNS over IPv6 (AdGuard listens on IPv4 only). Do
-  **not** use the Livebox's IPv6 DNS — it's link-local/dynamic and Windows rejects it. Instead
-  toggle **IPv6 on** and set a *fixed filtering* resolver — **AdGuard Public DNS** Preferred
-  `2a10:50c0::ad1:ff`, Alternate `2a10:50c0::ad2:ff` (keeps IPv6 + still blocks ads). *Simpler
-  alternative:* disable IPv6 on the adapter entirely (adapter Properties → uncheck *Internet
-  Protocol Version 6*) so only IPv4 → AdGuard is used — at the cost of IPv6 connectivity.
-  *(CLI equivalent, admin PowerShell: `netsh interface ip set dns name="Wi-Fi" static 192.168.1.19`
-  then `netsh interface ip add dns name="Wi-Fi" 192.168.1.1 index=2`.)*
-- **iOS:** Settings → Wi-Fi → **ⓘ** → **Configure DNS → Manual** → remove existing, Add
-  `192.168.1.19`, then Add `192.168.1.1` → Save.
-- **Android:** long-press the Wi-Fi network → **Modify → Advanced → IP settings → Static** →
-  **DNS 1 = `192.168.1.19`**, **DNS 2 = `192.168.1.1`** (leave **Private DNS = Off** — it only
-  takes a DoT hostname, not a LAN IP).
+1. **Converge, then reboot the Beelink** — `ansible-playbook playbooks/site.yml`, then
+   `sudo reboot`. The static `/etc/network/interfaces` only applies at boot. Check it took:
+   `ip route` shows `default via 192.168.1.1 dev enp1s0` **without** `proto dhcp`, and
+   `pgrep dhcpcd` prints nothing.
+2. **Note the Livebox's DHCP reservations** (Livebox UI `192.168.1.1` → DHCP). They get recreated
+   in AdGuard as static leases. Skip the Beelink's own — it is static now.
+3. **Turn off IPv6 on the Livebox LAN**, if the model allows it (advanced network settings).
+   Otherwise the Livebox keeps announcing its own IPv6 DNS in router advertisements, and Android
+   and Windows use it — bypassing AdGuard, so `*.home` fails and ads come back.
+4. **Prepare AdGuard's DHCP** — *Settings → DHCP settings*: interface `enp1s0`, gateway
+   `192.168.1.1`, mask `255.255.255.0`, range `192.168.1.100`–`192.168.1.199` (the Beelink's `.19`
+   stays outside it), lease 24 h. Add the static leases from step 2. **Don't enable it yet.**
+5. **Switch:** turn the Livebox's DHCP server **off**, then **enable** AdGuard's straight away
+   (*Check DHCP servers* should now find none). Never leave both on — two DHCP servers on one LAN
+   hand out conflicting answers.
+6. **Reconnect devices** (toggle Wi-Fi) or let their Livebox lease expire. New leases appear under
+   *DHCP settings → Dynamic leases*. If there is an Orange TV box, check it still gets a picture.
 
-**Confirm** on any device: an ad domain returns `0.0.0.0` and `jellyfin.home` returns
-`192.168.1.19`; the AdGuard **Query Log** shows that client's requests.
+**Verify** from a phone, not the workstation (it may still have manual DNS): open
+`http://jellyfin.home`. AdGuard's *Query Log* should show that phone by name.
 
-### Failsafe / resilience — add a secondary DNS
+**Undo the per-device setup** on anything configured by hand in the earlier phase — otherwise it
+keeps a Livebox secondary and `.home` stays flaky there. NetworkManager:
+`nmcli connection modify "<NAME>" ipv4.dns "" ipv4.ignore-auto-dns no ipv6.ignore-auto-dns no`,
+then `nmcli connection up "<NAME>"`. Windows/iOS/Android: set DNS back to *Automatic*.
 
-Single-host DNS is a single point of failure: if the Beelink is down (reboot, `update.yml`, power),
-a device with *only* `192.168.1.19` loses name resolution. The fix is the **secondary DNS** already
-shown above (`192.168.1.19` **first**, `192.168.1.1` second) — on failure the device falls back to
-the Livebox and keeps working.
+**Rollback** (2 minutes): Livebox UI → DHCP **on**, AdGuard → DHCP **off**, reconnect devices. The
+Livebox stays reachable at `192.168.1.1` whatever happens to DNS. A device with no lease at all can
+take a manual address (`192.168.1.50/24`, gateway `192.168.1.1`) to get there.
 
-- The container self-heals (`restart: unless-stopped`), so the realistic outage is the **whole box**
-  down, not AdGuard crashing — the fallback mainly covers reboots/OS updates.
-- **Tradeoff:** while failed over to the Livebox, that traffic is **unfiltered** and `*.home` names
-  won't resolve (use `192.168.1.19:port`).
-- ⚠️ **`*.home` names vs a secondary DNS (the big gotcha).** `*.home` exists *only* on our AdGuard;
-  every other resolver (Livebox, Quad9, **AdGuard-public IPv6** `2a10:50c0::ad1:ff`) answers
-  **NXDOMAIN** for it. **Linux/systemd-resolved** sticks to the primary so `.home` works — but
-  **Windows (prefers IPv6) and Android** happily query the secondary/IPv6 resolver *even while
-  AdGuard is up*, accept that NXDOMAIN, and the local name fails. So on those devices you can't have
-  both cleanly: **AdGuard as the *sole* DNS → reliable `.home` but no failsafe**, or **AdGuard +
-  secondary → failsafe but `.home` breaks** (reach services via `192.168.1.19:port` there). On
-  Windows specifically, the usual fix is to **disable IPv6 on the adapter** (or drop the IPv6 DNS),
-  then `ipconfig /flushdns`. Diagnose with `nslookup jellyfin.home 192.168.1.19` (always works —
-  forces AdGuard) vs `nslookup jellyfin.home` (uses the system resolver — reveals the wrong one).
-- Prefer **`9.9.9.9` (Quad9)** as the secondary instead of the Livebox if you want the degraded
-  state to still block malware and hide lookups from Orange.
-- **Proper HA comes with OPNsense:** two filtering resolvers (AdGuard on OPNsense + this one, or
-  AdGuard + Unbound) handed out by DHCP — a Beelink outage becomes invisible *and* nothing leaks,
-  and both know the `.home` zone so local names keep working on every OS. See [[Roadmap]].
+### Failsafe — the house has one DNS server now
 
-**Current choice (until OPNsense):** *keep the failsafe on every device* (secondary DNS =
-`192.168.1.1`) — a Beelink reboot must never look like "internet is broken". The cost is that
-`.home` names are unreliable on Windows and Android, and that is acceptable because **every app
-has an `IP:port` address that always works**. Use Glance (`http://192.168.1.19:8280`) as the
-launcher; its links are `IP:port` throughout.
+Every device gets `192.168.1.19` and nothing else. **Don't add the Livebox as a secondary** in
+AdGuard's DHCP: Windows and Android query both resolvers even while AdGuard is up, take the
+Livebox's NXDOMAIN for `*.home`, and the names break again — that was the whole per-device problem.
 
-This was briefly untrue: while SSO was in place the five *arr apps had no host port at all, so a
-resolver answering NXDOMAIN for `.home` locked you out entirely rather than merely annoying you.
-That is one of the reasons SSO was removed — see § *Access model* above. Clean `.home` everywhere,
-with a real failsafe, returns at the OPNsense phase.
+The cost: **Beelink down = no DNS for the house**. The internet "looks broken" although the link is
+fine; existing leases survive (24 h), so it's names that go, not addresses. How that's covered:
 
-> **If the container won't bind `:53`** (rare — only if resolved is grabbing the LAN IP): add a
-> `/etc/systemd/resolved.conf.d/` drop-in with `DNSStubListener=no`, and repoint the host's
-> `/etc/resolv.conf` at an **upstream** (`9.9.9.9`) — *never* at AdGuard itself, so the host never
-> depends on its own container. Then re-run the playbook. (Move this into the `adguard` role if it
-> ever becomes necessary — it isn't today.)
+- **Planned downtime** (reboot, `update.yml`) is short — do it when nobody's streaming.
+- **AdGuard never auto-updates.** It is pinned (`adguard_image`) and labelled
+  `com.centurylinklabs.watchtower.enable=false`, so Saturday's Watchtower run leaves it alone.
+  Upgrade by hand, at home: bump the tag in `roles/adguard/defaults/main.yml`, run
+  `ansible-playbook playbooks/adguard.yml`, then `dig @192.168.1.19 jellyfin.home +short`.
+- **Beelink dead for real:** the rollback above — Livebox DHCP back on.
+- **Proper HA, if this ever bites:** a second AdGuard (Raspberry Pi) kept identical with
+  `adguardhome-sync`, handed out as DNS 2 by AdGuard's DHCP. Both know `*.home`, so a secondary no
+  longer breaks names. Or the OPNsense phase in [[Roadmap]].
+
+Every app keeps its `IP:port` address, so `http://192.168.1.19:<port>` still works from any device
+that holds a lease, DNS or not.
+
+> **If AdGuard won't bind `:53`** (only if something on the host starts listening there, e.g.
+> systemd-resolved gets enabled): stop the container, set `dns.bind_hosts` to `192.168.1.19` in
+> `conf/AdGuardHome.yaml` instead of `0.0.0.0`, start it again. Or disable the stub with a
+> `/etc/systemd/resolved.conf.d/` drop-in (`DNSStubListener=no`). Never point the host's
+> `/etc/resolv.conf` at AdGuard — the `common` role pins it to the Livebox + Quad9.
 
 ## Access model — how you reach each app
 
@@ -237,10 +227,10 @@ portal, no forward auth, no certificate and no name to resolve. Use Glance
 | NPM / AdGuard / Uptime Kuma / Beszel | 81 / 3000 / 3001 / 8090 | each its own |
 | Dozzle / Dockge / Glance / Mealie | 8888 / 5001 / 8280 / 9925 | each its own |
 
-**The `.home` names still work** for the hosts NPM has always served (`seer.home`,
-`uptime.home`, `dozzle.home`, `dockge.home`, `adguard.home`, `beszel.home`, `mealie.home`),
-provided the device uses AdGuard for DNS. They are a convenience, never the only route — that is
-the lesson from the SSO experiment below.
+**The `.home` names work on every device** once AdGuard hands out DNS by DHCP (see *LAN-wide
+rollout* in the AdGuard section): one NPM proxy host per app. They are the everyday route, never
+the only one — every app keeps its `IP:port`, which is the lesson from the SSO experiment below.
+Glance switches its links to the names only after the DHCP switch has held for a while.
 
 **About the *arr login.** `Authentication Required: Disabled for Local Addresses` means a
 password exists (`vault_arr_password`, username `xael`) but is never asked for from a LAN
@@ -271,9 +261,9 @@ were the `identity` role, `playbooks/identity.yml`, the `certs/` directory, the 
 NPM hosts and wildcard certificate, the forward-auth nginx snippet, and the seven
 `vault_lldap_*` / `vault_authelia_*` secrets. Jellyfin went back to local accounts.
 
-**If it ever comes back**, the honest prerequisite is DHCP-distributed DNS so `.home` resolves
-everywhere without per-device setup — that is the OPNsense phase in [[Roadmap]], not a step to
-retrofit onto the Livebox.
+**If it ever comes back**, the prerequisite was DHCP-distributed DNS so `.home` resolves
+everywhere without per-device setup. AdGuard's DHCP server now provides that. The other costs
+above (the double prompt on qBittorrent, the certificates) have not changed.
 
 **Why gluetun is on the `homelab` network** — qBittorrent runs inside gluetun's network
 namespace, so monitoring could not health-check its WebUI by container name once the host port
@@ -411,6 +401,7 @@ accounts are set up once in each UI after the first deploy; the roles only stand
    (shoutrrr `discord://TOKEN@ID`) and re-run `administration.yml` to get the message; without it, the run
    summary just logs to Watchtower's own container (readable in Dozzle). To pin/exclude a service from the
    weekly update, give its container `com.centurylinklabs.watchtower.enable=false` and converge.
+   AdGuard already has it — it is the house's DNS, so it only moves when you bump its tag.
    > **Image = `nickfedor/watchtower`, not `containrrr/watchtower`.** The original is unmaintained and
    > its old Docker API client (1.25) crash-loops against modern Engine (`client version 1.25 is too
    > old`). The `nickfedor` fork is the maintained drop-in.

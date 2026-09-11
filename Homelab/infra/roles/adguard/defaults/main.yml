@@ -1,11 +1,13 @@
 ---
-# ── AdGuard Home: network-wide DNS ad/tracker/malware blocking + local *.home names ──
+# ── AdGuard Home: the LAN's DNS (ad/tracker/malware blocking + local *.home names) and DHCP server ──
 # Configured through its own web UI (persists to conf/) — no secrets to template here.
-adguard_image: adguard/adguardhome:latest
+# Pinned, and excluded from Watchtower (label in the compose file): the whole house depends on
+# this one container, so it only moves when you bump this tag yourself.
+adguard_image: adguard/adguardhome:v0.107.79
 
 # Host paths (compose under the shared stacks_root; appdata alongside the other stacks)
 adguard_dir: "{{ stacks_root }}/adguard"
 adguard_appdata: /home/adguard/appdata
 
-# Admin UI port — 80 is taken by NPM, so keep AdGuard's admin on 3000 (setup + running).
-adguard_web_port: 3000
+# No port variables: the container is on the host network, so its ports (DNS 53, DHCP 67,
+# admin 3000 — 80 is NPM's) are set in AdGuard's own config, not here.

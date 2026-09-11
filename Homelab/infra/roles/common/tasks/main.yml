@@ -26,6 +26,32 @@
     group: "{{ media_group }}"
     mode: "0755"
 
+- name: Give the LAN interface a static address
+  # Written now, applied at the next reboot — deliberately not live: swapping ifupdown from
+  # dhcp to static under a running dhcpcd, over the very SSH link it carries, is how you lose
+  # the box. Same IP as the old Livebox reservation, so an early reboot changes nothing.
+  ansible.builtin.template:
+    src: interfaces.j2
+    dest: /etc/network/interfaces
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+
+- name: Pin the host's own DNS resolvers
+  # With no DHCP client left, nothing else writes this file (resolvconf isn't installed).
+  # Until the reboot above, dhcpcd still rewrites it on lease renewal — expect "changed".
+  ansible.builtin.copy:
+    dest: /etc/resolv.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (common role) — upstreams only, never AdGuard on this host.
+      {% for ns in common_host_dns %}
+      nameserver {{ ns }}
+      {% endfor %}
+
 - name: Harden SSH
   block:
     - name: Deploy SSH hardening drop-in

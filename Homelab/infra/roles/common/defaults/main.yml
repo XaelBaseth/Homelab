@@ -15,3 +15,16 @@ common_timezone: Europe/Paris
 
 # Locale to ensure is generated.
 common_locale: en_US.UTF-8
+
+# ── LAN addressing ──
+# Static, set on the host itself: AdGuard (adguard role) is the LAN's DHCP server and runs
+# here, so this host can't lease its own address from it. The address is vault_beelink_host.
+common_lan_interface: enp1s0
+common_lan_prefix: 24
+common_lan_gateway: 192.168.1.1
+
+# The host's own resolvers. Upstreams only, never AdGuard: the host must not depend on its
+# own container to resolve names (image pulls, apt, Ansible itself).
+common_host_dns:
+  - 192.168.1.1   # Livebox — still relays DNS with its DHCP server turned off
+  - 9.9.9.9       # Quad9

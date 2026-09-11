@@ -7,21 +7,11 @@ stack from home today; these are the "next phase" items — most tied to standin
 
 ## Deferred to the OPNsense phase
 
-- **LAN-*wide* DNS + `*.home` names.** The Orange Livebox won't distribute a custom DNS server,
-  so *automatic* LAN-wide name resolution is still on hold. **AdGuard Home now solves this
-  per-device today** — its `*.home → Beelink` rewrite + manual DNS on each device lights up NPM's
-  proxy hosts (see AdGuard, under *Done*). Full LAN-wide (no per-device step) waits for OPNsense
-  to become the **DHCP server** — then it hands out AdGuard/Unbound as DNS to everything at once.
-  *Interim for un-pointed devices:* a `/etc/hosts` entry on the workstation, or `beelink-ip:port`.
-- **NPM proxy hosts to create** (in the NPM UI, `:81`) once DNS resolves — forward to the Beelink
-  IP + published port (no shared docker network yet). ⚠️ **enable "Websockets Support"** on the
-  monitoring ones — Uptime Kuma and Beszel are realtime over WebSocket and load blank without it:
-
-  | Domain | → Forward | Websockets |
-  |--------|-----------|------------|
-  | `uptime.home` | `beelink:3001` | **yes** |
-  | `beszel.home` | `beelink:8090` | **yes** |
-  | `jellyfin.home` / `seerr.home` / `sonarr.home` / … | the media-stack ports | as needed |
+- **DNS high availability.** AdGuard is the LAN's DHCP server and its only DNS, so a Beelink
+  outage takes name resolution down for the house. The fix is a second filtering resolver handed
+  out by DHCP — AdGuard on OPNsense, or a Raspberry Pi kept identical with `adguardhome-sync`. Both
+  know `*.home`, which is what makes a secondary safe (the Livebox as secondary is what broke
+  `.home` on Windows/Android). Until then: the rollback in the [[Runbook]] — Livebox DHCP back on.
 - **Tailscale** for remote/5G access. Pairs with OPNsense (which can be the Tailscale subnet
   router). No port-forwarding, no certs needed — the tailnet is encrypted.
 ## Tried and removed
@@ -72,14 +62,18 @@ stack from home today; these are the "next phase" items — most tied to standin
   Uptime Kuma probes the containers it can't reach by host port (gluetun/qBittorrent) across it;
   Glance links every tile by `IP:port` and needs no `check-url` at all any more.
 
-- **AdGuard Home** (the `adguard` role). Network-wide DNS **ad/tracker/malware blocking** +
-  `*.home` rewrites, in its own compose project. DNS binds `:53` on the Beelink's LAN IP (dodges
-  the systemd-resolved stub — no host DNS change); admin on `:3000` (NPM owns `:80`). Upstream is
-  **Quad9 over DoH** (encrypted, free malware layer). **Rollout is per-device for now** — the
-  Livebox can't distribute DNS, so you point each device at the Beelink manually; this all carries
-  over 1:1 to OPNsense (same plugin, or the same idea in Unbound). Setup/operate: see the AdGuard
-  section of the [[Runbook]]. *Escalation if impatient:* let AdGuard be the LAN DHCP server
-  (disable the Livebox's) for true whole-network coverage before OPNsense exists.
+- **AdGuard Home** (the `adguard` role). The LAN's **DNS and DHCP server**: ad/tracker/malware
+  blocking + `*.home` rewrites for every device in the house, in its own compose project. Host
+  network (DHCP is broadcast and can't cross Docker's NAT); admin on `:3000` (NPM owns `:80`).
+  Upstream is **Quad9 over DoH**. The Livebox can't distribute a DNS server, so its DHCP is off and
+  AdGuard hands itself out. Setup/operate: see the AdGuard section of the [[Runbook]].
+  - **Per-device DNS came first and was replaced.** Each device kept the Livebox as a secondary
+    resolver (the failsafe); Windows and Android took its NXDOMAIN for `*.home`, so names only
+    worked reliably on the workstation.
+  - **Knock-ons:** the Beelink is on a static IP set on the host (`common` role — it can't lease
+    from itself), its own `/etc/resolv.conf` points at the Livebox + Quad9 (never at AdGuard), and
+    AdGuard is pinned and excluded from Watchtower (a bad auto-update would cut the whole house).
+  - **NPM proxy hosts** — one per app, forwarding to `192.168.1.19:<published port>`, Websockets on.
 
 - **Monitoring + alerting** (the `monitoring` role). Uptime Kuma (service/container up-down +
   alerting), Beszel (host + per-container resource history + threshold alerts), and an off-box

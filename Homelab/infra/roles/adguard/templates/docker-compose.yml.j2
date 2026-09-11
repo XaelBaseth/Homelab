@@ -2,15 +2,18 @@ services:
   adguard:
     image: {{ adguard_image }}
     container_name: adguard
-    ports:
-      # DNS bound to the Beelink's LAN IP only, so it never collides with the Debian
-      # systemd-resolved stub on 127.0.0.53:53 — no host DNS surgery for the per-device phase.
-      # If :53 ever fails to bind, disable the stub (DNSStubListener=no) and repoint the host's
-      # /etc/resolv.conf at an UPSTREAM (e.g. 9.9.9.9), never at AdGuard itself. See the Runbook.
-      - "{{ vault_beelink_host }}:53:53/tcp"
-      - "{{ vault_beelink_host }}:53:53/udp"
-      - "{{ adguard_web_port }}:3000/tcp"   # setup wizard + admin UI (keep admin on 3000)
+    # Host networking: AdGuard is the LAN's DHCP server, and DHCP is broadcast — it can't
+    # cross Docker's NAT. So no `ports:`; what it listens on lives in its own config
+    # (conf/AdGuardHome.yaml, written by the UI): DNS :53 on 0.0.0.0 — safe, systemd-resolved
+    # is inactive on this host and nothing else holds :53 — DHCP :67, admin UI :3000.
+    # If :53 ever collides with a resolver stub, see the Runbook — never point the host at AdGuard.
+    network_mode: host
     volumes:
       - {{ adguard_appdata }}/work:/opt/adguardhome/work
       - {{ adguard_appdata }}/conf:/opt/adguardhome/conf
+    labels:
+      # Never auto-updated. AdGuard is the only DNS and DHCP server of the whole house: a
+      # Watchtower recreate cuts everyone's internet, and a bad image keeps it cut. Bump
+      # adguard_image by hand, when you're home to check it. See the Runbook.
+      - com.centurylinklabs.watchtower.enable=false
     restart: unless-stopped

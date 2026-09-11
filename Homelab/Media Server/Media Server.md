@@ -21,7 +21,7 @@ After the one-time Debian install, the box is never touched by hand except to re
 ```
 Internet
    │
- Livebox (router, DHCP) ──LAN── Workstation (Ansible control node)
+ Livebox (router; DHCP off) ──LAN── Workstation (Ansible control node)
    │
  Beelink · Debian 13 · Docker
    │
@@ -39,7 +39,7 @@ Internet
    │     └── mealie   (:9925 — recipes/meal planning)
    │
    └── compose project: "adguard"      (/home/stacks/adguard)
-         └── adguard  (DNS :53 on the LAN IP — ad/tracker blocking + *.home rewrites; admin :3000)
+         └── adguard  (host network — the LAN's DNS :53 + DHCP :67, ad blocking + *.home; admin :3000)
 
 Storage:  /data (ext4)  →  torrents/{movies,tv} + media/{movies,tv}  (same fs ⇒ hardlinks)
           /home/docker            = Docker data-root (images/volumes)
@@ -67,14 +67,14 @@ on the normal network.
 | **maintainerr** | Rule-based library cleanup | 6246 | `maintainerr/` |
 | **npm** | Reverse proxy (name-based access) | 80/443/81 | `npm/` |
 | **glance** | Dashboard (separate project) | 8280 | `/home/glance/config/glance.yml` |
-| **adguard** | DNS ad/tracker/malware blocking + `*.home` rewrites (own project) | 53 (DNS) / 3000 (admin) | `adguard/{conf,work}` |
+| **adguard** | The LAN's DNS + DHCP server: ad/tracker/malware blocking + `*.home` rewrites (own project) | 53 (DNS) / 67 (DHCP) / 3000 (admin) | `adguard/{conf,work}` |
 | **mealie** | Recipes + meal planning (own project, own login) | 9925 | `/home/webapps/appdata/mealie/` |
 
-Access is **`http://<beelink-ip>:<port>`** for everything — that is the model, not a fallback.
-Each app keeps its own login. (SSO via Authelia was tried and removed; the reasoning is in
-[[Runbook]] § *Access model*.) Clean `*.home` names additionally resolve via **AdGuard**'s
-`*.home → beelink` rewrite (per-device DNS for now — the Livebox can't push it LAN-wide until
-OPNsense) → **NPM** proxy hosts. See the AdGuard setup in [[Runbook]] and [[Roadmap]].
+Every app answers at **`http://<beelink-ip>:<port>`** — the route that always works — and at a
+clean `*.home` name: AdGuard is the LAN's DHCP server (the Livebox's is off, it can't hand out
+another DNS), so every device resolves `*.home → beelink` → **NPM** proxy hosts. Each app keeps
+its own login. (SSO via Authelia was tried and removed; the reasoning is in [[Runbook]]
+§ *Access model*.) See the AdGuard setup in [[Runbook]] and [[Roadmap]].
 
 ## Key decisions
 
