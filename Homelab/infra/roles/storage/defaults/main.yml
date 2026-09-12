@@ -6,6 +6,6 @@ storage_partition: "{{ storage_device }}-part1"
 storage_mount: /data
 storage_fstype: ext4
 
-# Ownership of the media tree. In Phase 2 the containers' PUID/PGID will match this user.
-media_owner: beelink
-media_group: beelink
+# media_owner / media_group are NOT defined here: eight roles share them, so they live in
+# inventory/group_vars/all/vars.yml. They used to be duplicated in this file, where the
+# group_vars copy silently won and these values were dead weight.

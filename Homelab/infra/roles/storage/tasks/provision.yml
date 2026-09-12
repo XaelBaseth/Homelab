@@ -1,0 +1,51 @@
+---
+# DESTRUCTIVE — labels the drive and can create a filesystem on it, discarding whatever
+# was there. Reached only through playbooks/storage-provision.yml, which you run by hand
+# on a new disk. site.yml must never include this file.
+
+- name: Safety — verify the media drive is present
+  ansible.builtin.stat:
+    path: "{{ storage_device }}"
+  register: _media_disk
+
+- name: Safety — abort if the media drive is missing
+  ansible.builtin.assert:
+    that: _media_disk.stat.exists
+    fail_msg: >-
+      Media drive {{ storage_device }} not found (plugged in?).
+      Aborting before touching any disk.
+
+- name: Ensure disk tooling is present (parted, mkfs.ext4)
+  ansible.builtin.apt:
+    name:
+      - parted
+      - e2fsprogs
+    state: present
+    update_cache: true
+
+- name: Create a GPT label with a single full-disk partition
+  community.general.parted:
+    device: "{{ storage_device }}"
+    label: gpt
+    number: 1
+    part_start: 0%
+    part_end: 100%
+    state: present
+
+- name: Detect the current filesystem on the media partition
+  # rc 0 = blkid identified a filesystem; rc 2 = it found none, the normal blank-disk case.
+  # Any other rc is a real failure and stops the play here, because the old `failed_when:
+  # false` turned an unreadable blkid into an empty stdout, which the expression below
+  # then read as "not ext4" — and formatted the drive.
+  ansible.builtin.command: "blkid -s TYPE -o value {{ storage_partition }}"
+  register: _current_fs
+  changed_when: false
+  failed_when: _current_fs.rc not in [0, 2]
+
+- name: Format the partition ext4 (force ONLY when replacing a different filesystem)
+  # A blank partition needs no force, and an inconclusive blkid can no longer imply one:
+  # force is set only when blkid positively named a filesystem that is not ours.
+  community.general.filesystem:
+    dev: "{{ storage_partition }}"
+    fstype: "{{ storage_fstype }}"
+    force: "{{ _current_fs.rc == 0 and (_current_fs.stdout | trim) != storage_fstype }}"

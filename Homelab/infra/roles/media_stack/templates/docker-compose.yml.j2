@@ -21,7 +21,7 @@ services:
       # qBittorrent's WebUI is published here rather than on the qbittorrent service:
       # that container has no network stack of its own (network_mode: service:gluetun),
       # so every port it listens on has to be declared by gluetun.
-      - {{ qbittorrent_webui_port }}:8080   # qBittorrent WebUI — reached directly, outside SSO
+      - {{ qbittorrent_webui_port }}:8080   # qBittorrent WebUI — reached directly, own login
       - 6881:6881         # torrent TCP
       - 6881:6881/udp     # torrent UDP
     volumes:
@@ -29,6 +29,12 @@ services:
     networks:
       - default
       - homelab                       # qBittorrent shares this namespace; lets Glance reach its WebUI
+    labels:
+      # Never auto-updated, for qBittorrent's sake rather than its own: qBittorrent runs in
+      # this container's network namespace and is itself excluded below, so a Watchtower
+      # recreate here would leave it with a dead netns and no route out. The two only ever
+      # move together — see the "Recreate VPN containers" handler. Bump gluetun_image by hand.
+      - com.centurylinklabs.watchtower.enable=false
     restart: unless-stopped
 
   qbittorrent:
@@ -46,6 +52,13 @@ services:
     volumes:
       - ${APPDATA}/qbittorrent:/config
       - ${MEDIA}:/data                   # whole /data mounted so hardlinks work later
+    labels:
+      # Never auto-updated. qBittorrent holds its entire torrent list as local state under
+      # /config/qBittorrent/BT_backup, and a recreate across a config-schema migration can
+      # drop it. The data then stays on /data with nothing left referencing it, so no cleanup
+      # can ever reclaim it: the likeliest cause of the 481 GB of orphans found in Sep 2026.
+      # Bump qbittorrent_image by hand, and check the torrent list is still there afterwards.
+      - com.centurylinklabs.watchtower.enable=false
     restart: unless-stopped
 
   prowlarr:

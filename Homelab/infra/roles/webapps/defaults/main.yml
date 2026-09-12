@@ -1,12 +1,10 @@
 ---
 # ── Webapps stack: the self-hosted applications that aren't media ──
-# Mealie (recipes and meal planning) is the only one left. The stack kept its plural
-# name because it is the landing place for the next non-media app; linkding and the
-# MkDocs documentation site lived here too until they were removed as unused.
+# Mealie (recipes and meal planning) is the only one left; the stack keeps its plural
+# name because it is the landing place for the next non-media app.
 #
-# Scope note: this stack is deliberately OUTSIDE SSO, same reasoning as
-# administration/monitoring/adguard/glance. Each app keeps its own login and its own
-# published port, so a broken auth layer never costs you access. See [[SSO Setup]].
+# Like every other stack on this host, it sits behind no auth layer: each app keeps its
+# own login on its own published port, so nothing central can lock you out.
 mealie_image: ghcr.io/mealie-recipes/mealie:latest
 
 # Host paths (compose under the shared stacks_root; appdata alongside the other stacks)

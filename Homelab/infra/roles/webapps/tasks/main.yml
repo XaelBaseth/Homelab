@@ -29,8 +29,8 @@
     mode: "0644"
 
 - name: Deploy the webapps stack
-  # remove_orphans is what actually deletes the linkding and docs containers: they are
-  # no longer in the compose file, so compose treats them as orphans of this project.
+  # remove_orphans is what retires a container dropped from the compose file: compose
+  # treats it as an orphan of this project and deletes it on the next converge.
   community.docker.docker_compose_v2:
     project_src: "{{ webapps_dir }}"
     state: present

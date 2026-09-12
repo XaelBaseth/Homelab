@@ -9,10 +9,17 @@
   loop:
     - "{{ monitoring_dir }}"
     - "{{ monitoring_appdata }}"
-    - "{{ monitoring_appdata }}/uptime-kuma"
     - "{{ monitoring_appdata }}/beszel"
     - "{{ monitoring_appdata }}/beszel-agent"
     - "{{ media_root }}/.beszel"   # empty marker dir so Beszel can report the /data drive's usage
+
+- name: Ensure Uptime Kuma's data directory exists
+  # Ownership and mode deliberately unmanaged: the image runs as root and takes this
+  # directory over, so enforcing media_owner here made every converge report a change
+  # and chown it back. Only its existence matters before the stack deploys.
+  ansible.builtin.file:
+    path: "{{ monitoring_appdata }}/uptime-kuma"
+    state: directory
 
 - name: Render the stack environment file (secrets from the vault)
   ansible.builtin.template:
@@ -34,17 +41,6 @@
   community.docker.docker_compose_v2:
     project_src: "{{ monitoring_dir }}"
     state: present
-
-- name: Remove stale compose files from the pre-consolidation path (one-time migration)
-  # The compose project name is the dir basename ("monitoring"), unchanged by the move,
-  # so the deploy above re-adopts the running containers. appdata stays at the old path,
-  # so we clear only the two files that actually moved. Safe to delete this task after the first apply.
-  ansible.builtin.file:
-    path: "/home/monitoring/{{ item }}"
-    state: absent
-  loop:
-    - docker-compose.yml
-    - .env
 
 - name: Install the healthchecks.io heartbeat cron (external dead-man's-switch)
   ansible.builtin.cron:

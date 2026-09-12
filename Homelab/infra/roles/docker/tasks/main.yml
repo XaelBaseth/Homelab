@@ -26,10 +26,12 @@
     update_cache: true
 
 - name: Ensure the containerd data root exists on /home
+  # Mode deliberately unmanaged: containerd resets its own root to 0700 every time it
+  # restarts, so pinning 0711 here made each converge report a change and set it back.
+  # This task only has to guarantee the directory exists before containerd starts.
   ansible.builtin.file:
     path: "{{ containerd_data_root }}"
     state: directory
-    mode: "0711"
 
 - name: Point containerd's store at /home (keeps image layers off the 12G /var)
   # Docker's data-root does NOT relocate the containerd snapshotter store — only this `root` does.
@@ -79,11 +81,9 @@
     append: true
 
 # Declared as `external: true` by the media_stack, webapps, glance and monitoring
-# compose files, so it must exist before any of them deploys. It used to be created
-# by the identity role, which ran ahead of media_stack for exactly that reason; that
-# role is gone with the SSO layer, and this is the earliest point where the Docker
-# daemon is guaranteed to be up. The subnet is pinned in group_vars because gluetun's
-# firewall rule names it explicitly.
+# compose files, so it must exist before any of them deploys — and this is the earliest
+# point where the Docker daemon is guaranteed to be up, hence its home in this role.
+# The subnet is pinned in group_vars because gluetun's firewall rule names it explicitly.
 - name: Create the shared `homelab` docker network
   community.docker.docker_network:
     name: homelab

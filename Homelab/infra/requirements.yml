@@ -1,15 +1,18 @@
 ---
 # Install these with:  ansible-galaxy collection install -r requirements.yml
 # Re-run that command any time you add a collection here.
+# Floors are the majors this repo is actually converged against, not the oldest that might
+# work: community.docker 4.x is a breaking major over 3.x, and the old ">=3.10.0" floor let
+# a 3.x install satisfy a repo that no longer runs on it.
 collections:
-  # Docker Engine + docker compose management (used by the docker role).
+  # docker_compose_v2, docker_network — used by the docker role and every stack role.
   - name: community.docker
-    version: ">=3.10.0"
+    version: ">=4.0.0"
 
-  # General-purpose system modules: timezone, ufw, and many more used in the common role.
+  # locale_gen, timezone (common role); parted, filesystem (storage role provisioning).
   - name: community.general
-    version: ">=8.0.0"
+    version: ">=11.0.0"
 
-  # Core POSIX modules: mount/fstab management for the storage role (/data).
+  # mount/fstab management for the storage role (/data).
   - name: ansible.posix
-    version: ">=1.5.0"
+    version: ">=2.0.0"

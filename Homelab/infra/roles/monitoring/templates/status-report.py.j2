@@ -2,8 +2,7 @@
 # Homelab daily status digest — MANAGED BY ANSIBLE (monitoring role). Do not edit on the host.
 # Pulls per-monitor up/down from Uptime Kuma (/metrics) + per-host CPU/MEM/DISK from Beszel,
 # then posts a single Discord embed to the dedicated status webhook. Stdlib only (no deps).
-# It used to also report days-to-expiry for the internal CA and the *.media.home wildcard;
-# both went with the SSO layer, and nothing else on the box serves a certificate.
+# No certificate expiry section: nothing on this host serves a certificate.
 CONFIG = {
     "kuma_url":    "http://{{ vault_beelink_host }}:{{ uptime_kuma_port }}/metrics",
     "kuma_key":    "{{ vault_uptime_kuma_api_key }}",

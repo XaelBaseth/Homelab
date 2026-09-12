@@ -1,6 +1,15 @@
 ---
-# ── Monitoring stack images (on :latest, like the rest — pin later) ──
-uptime_kuma_image: louislam/uptime-kuma:latest
+# ── Monitoring stack images ──
+# Floating tags, because Watchtower is the update mechanism here. The containers that must
+# NOT float carry a watchtower.enable=false label instead — adguard (the LAN's DNS) and the
+# gluetun/qbittorrent pair (local torrent state).
+#
+# Uptime Kuma tracks `2`, NOT `latest`: upstream froze `latest` on 1.23.17 (Oct 2025), the
+# last 1.x, and ships the active line under `2`/`next`. On `latest` Watchtower kept
+# reporting success against a tag that had stopped moving, and the container sat 11 months
+# behind. Migrated to 2.x on 2026-09-12; the pre-migration DB is in
+# /home/monitoring/backups/pre-2x-20260912-115135 (2.x rewrites the schema, one-way).
+uptime_kuma_image: louislam/uptime-kuma:2
 beszel_hub_image: henrygd/beszel:latest
 beszel_agent_image: henrygd/beszel-agent:latest
 

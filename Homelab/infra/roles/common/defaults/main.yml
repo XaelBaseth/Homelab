@@ -10,8 +10,9 @@ common_packages:
   - htop
   - locales
 
-# System timezone — change if you're not in this zone.
-common_timezone: Europe/Paris
+# System timezone. Follows `timezone` in group_vars, which the stacks pass to containers
+# as TZ, so the host and its containers can never disagree. Override only to deviate.
+common_timezone: "{{ timezone }}"
 
 # Locale to ensure is generated.
 common_locale: en_US.UTF-8

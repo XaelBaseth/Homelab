@@ -1,0 +1,16 @@
+---
+# Run ONCE, by hand, against a brand-new media drive:
+#
+#   ansible-playbook playbooks/storage-provision.yml
+#
+# It writes a GPT label to storage_device and creates the filesystem, destroying whatever
+# is on that disk. site.yml deliberately leaves it out: the storage role's default path
+# only mounts the drive and ensures the directory tree, so a converge can never reformat.
+- name: Provision the media drive (DESTRUCTIVE — partition + filesystem)
+  hosts: beelink
+  become: true
+  tasks:
+    - name: Partition and format the media drive
+      ansible.builtin.include_role:
+        name: storage
+        tasks_from: provision

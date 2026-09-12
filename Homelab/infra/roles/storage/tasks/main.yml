@@ -1,49 +1,22 @@
 ---
-- name: Safety — verify the media drive is present
+# Mount-only path — safe on every converge. Partitioning and mkfs live in provision.yml,
+# which nothing but playbooks/storage-provision.yml pulls in. They used to run from here
+# on every site.yml, where one empty blkid reply was enough to flip `force` on and wipe
+# a drive holding 272 GB of media. Keep this file free of anything that writes to the disk.
+
+- name: Safety — verify the media partition is present
   ansible.builtin.stat:
-    path: "{{ storage_device }}"
-  register: _media_disk
+    path: "{{ storage_partition }}"
+  register: _media_part
 
-- name: Ensure disk tooling is present (parted, mkfs.ext4)
-  ansible.builtin.apt:
-    name:
-      - parted
-      - e2fsprogs
-    state: present
-    update_cache: true
-
-- name: Safety — abort if the media drive is missing or misidentified
+- name: Safety — abort if the media partition is missing
   ansible.builtin.assert:
-    that:
-      - _media_disk.stat.exists
-      - "'usb-Seagate_Expansion' in storage_device"
+    that: _media_part.stat.exists
     fail_msg: >-
-      Media drive {{ storage_device }} not found (plugged in?) or the id doesn't match the
-      expected external disk. Aborting before touching any disk.
+      Media partition {{ storage_partition }} not found — is the drive plugged in?
+      On a brand-new disk, run playbooks/storage-provision.yml once first.
 
-- name: Create a GPT label with a single full-disk partition
-  community.general.parted:
-    device: "{{ storage_device }}"
-    label: gpt
-    number: 1
-    part_start: 0%
-    part_end: 100%
-    state: present
-
-- name: Detect the current filesystem on the media partition
-  ansible.builtin.command: "blkid -s TYPE -o value {{ storage_partition }}"
-  register: _current_fs
-  changed_when: false
-  failed_when: false
-
-- name: Format the partition ext4 (force ONLY when converting from another filesystem)
-  community.general.filesystem:
-    dev: "{{ storage_partition }}"
-    fstype: "{{ storage_fstype }}"
-    force: "{{ (_current_fs.stdout | trim) != storage_fstype }}"
-
-
-- name: Read the new partition's UUID
+- name: Read the media partition's UUID
   ansible.builtin.command: "blkid -s UUID -o value {{ storage_partition }}"
   register: _media_uuid
   changed_when: false
