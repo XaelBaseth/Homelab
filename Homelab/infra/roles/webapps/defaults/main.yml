@@ -15,12 +15,10 @@ webapps_appdata: /home/webapps/appdata
 mealie_port: 9925
 
 # ── Seshat (ebook library) ──
-# No registry: the image is built on the workstation from a committed ref of the local
-# project-seshat checkout (infra/build-standalone.sh), shipped as a tarball and
-# `docker load`ed here. Bump seshat_ref to deploy another version; prefer a tag or a sha
-# over a branch, which would silently move.
-seshat_repo: "{{ lookup('env', 'HOME') }}/Documents/project-seshat"
-seshat_ref: 5cc4ecd0d07d
+# No registry: build the image on the workstation yourself (project-seshat:
+# infra/build-standalone.sh), then this role ships it over with docker save/load
+# whenever the host's copy differs.
+seshat_image: seshat:latest
 seshat_library_path: "{{ media_root }}/books"   # books + SQLite dbs, on the ext4 media drive
 seshat_max_upload_mb: 500
 seshat_max_concurrent_conversions: 2

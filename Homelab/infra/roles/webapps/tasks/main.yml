@@ -12,35 +12,33 @@
     - "{{ webapps_appdata }}/mealie"      # Mealie's /app/data — SQLite db, recipe images, backups
     - "{{ seshat_library_path }}"          # Seshat's /data/libraries — runs as PUID, so owned by it
 
-# ── Seshat image: built on the workstation, loaded here (no registry) ──
-# The image tag is the ref's short sha, so a tag or branch in seshat_ref still maps to
-# exactly one image.
-- name: Resolve the Seshat ref to its image tag
-  ansible.builtin.command: git -C {{ seshat_repo }} rev-parse --short=12 {{ seshat_ref }}^{commit}
+# ── Seshat image: built on the workstation, shipped here (no registry) ──
+# Compared by image ID rather than tag, so rebuilding under the same tag still ships.
+- name: Read the Seshat image on the workstation
+  ansible.builtin.command: docker image inspect {{ seshat_image }}
   delegate_to: localhost
   become: false
   run_once: true
   changed_when: false
   check_mode: false
-  register: seshat_sha
+  register: seshat_local_image
 
-- name: Set the Seshat image name
-  ansible.builtin.set_fact:
-    seshat_image: "seshat:{{ seshat_sha.stdout }}"
-    seshat_tarball: "/tmp/seshat-{{ seshat_sha.stdout }}.tar"
-
-- name: Check whether the Seshat image is already loaded
+- name: Read the Seshat image on the host
   community.docker.docker_image_info:
     name: "{{ seshat_image }}"
-  register: seshat_image_info
+  register: seshat_remote_image
 
-- name: Build, ship and load the Seshat image
-  when: seshat_image_info.images | length == 0
+- name: Compare the two image IDs
+  ansible.builtin.set_fact:
+    seshat_local_id: "{{ (seshat_local_image.stdout | from_json)[0].Id }}"
+    seshat_remote_id: "{{ seshat_remote_image.images[0].Id if seshat_remote_image.images else '' }}"
+    seshat_tarball: /tmp/seshat-image.tar
+
+- name: Ship the Seshat image
+  when: seshat_local_id != seshat_remote_id
   block:
-    - name: Build and save the image on the workstation
-      ansible.builtin.command:
-        cmd: "{{ seshat_repo }}/infra/build-standalone.sh {{ seshat_sha.stdout }} {{ seshat_tarball }}"
-        creates: "{{ seshat_tarball }}"
+    - name: Save the image on the workstation
+      ansible.builtin.command: docker save -o {{ seshat_tarball }} {{ seshat_image }}
       delegate_to: localhost
       become: false
 

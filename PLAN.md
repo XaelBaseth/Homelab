@@ -281,9 +281,9 @@ add the next service group.** Add services in this order, verifying each before 
     tracking. No more SSH just to read logs or bounce a stack.
 
   - **2.10** ▶️ authored, **not yet run** — **Seshat** (ebook library, own project) added to the
-    `webapps` role. Single image built on the workstation from a pinned commit of
-    `~/Documents/project-seshat` (`infra/build-standalone.sh`), shipped as a tarball and
-    `docker load`ed — no registry. Runs as PUID, library on `/data/books`, **no published port**
+    `webapps` role. Single image `seshat_image` (default `seshat:latest`) built by hand on
+    the workstation (`project-seshat/infra/build-standalone.sh`); the role ships it with
+    `docker save`/`load` whenever its image ID differs from the host's — no registry. Runs as PUID, library on `/data/books`, **no published port**
     (Seshat has no login: NPM's Access List is its only auth). Glance bookmark + monitor added.
     Manual after the first run: NPM proxy host `seshat.home` → `seshat:8000` + Basic Auth
     Access List; AdGuard rewrite if `*.home` isn't wildcarded; Uptime Kuma HTTP monitor
