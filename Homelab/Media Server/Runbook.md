@@ -18,11 +18,14 @@ infra/
 │       ├── vars.yml            # non-secret config (PUID/PGID, paths, timezone, local_domain, GPU GIDs)
 │       └── vault.yml           # ENCRYPTED secrets (see below)
 ├── playbooks/
-│   ├── site.yml                # full run: common → storage → docker → media_stack → glance → monitoring → administration
+│   ├── site.yml                # full run: common → storage → docker → media_stack → webapps → glance → monitoring → administration → adguard
 │   ├── media.yml               # just the media stack (fast iteration)
 │   ├── dashboard.yml           # just Glance
 │   ├── monitoring.yml          # just the monitoring stack (Uptime Kuma + Beszel + heartbeat)
 │   ├── administration.yml      # just the admin stack (Dozzle + Dockge + Watchtower)
+│   ├── webapps.yml             # just the webapps stack (Mealie + Seshat)
+│   ├── adguard.yml             # just AdGuard Home (LAN DNS + *.home rewrite)
+│   ├── storage-provision.yml   # run ONCE by hand against a brand-new media drive
 │   └── update.yml              # manual weekly apt upgrade
 └── roles/
     ├── common/                 # apt base, locale/timezone, SSH hardening (key-only), stacks_root
@@ -32,7 +35,8 @@ infra/
     ├── glance/                 # the dashboard (separate compose project)
     ├── monitoring/             # Uptime Kuma + Beszel + healthchecks.io cron  (OBSERVE only)
     ├── administration/         # Dozzle (logs) + Dockge (mgmt) + Watchtower (notify)  (ACT on containers)
-    └── webapps/                # Mealie (non-media apps)
+    ├── webapps/                # Mealie + Seshat (non-media apps)
+    └── adguard/                # AdGuard Home (LAN DNS, *.home rewrite, ad-blocking)
 ```
 
 ## What's in the vault
@@ -552,6 +556,17 @@ ansible beelink -m command -a "docker restart qbittorrent" -b
 ansible beelink -m shell -a "docker exec sonarr sh -c 'echo t > /data/torrents/tv/hltest && ln /data/torrents/tv/hltest /data/media/tv/hltest && ls -li /data/torrents/tv/hltest /data/media/tv/hltest && rm -f /data/torrents/tv/hltest /data/media/tv/hltest'" -b
 ```
 Pass = both lines show the **same inode** number.
+
+**Disk space not freed after a deletion (orphaned downloads):** a hardlinked file has two names,
+one in `torrents/` (qBittorrent's) and one in `media/` (the library's), and the data only goes
+when the last one does. Maintainerr deletes through Sonarr/Radarr, which only remove the library
+name — never the download client's. So qBittorrent must drop its own copy: *Options → BitTorrent →
+Seeding limits* → **Remove torrent and its files** (set in the qBittorrent UI; its config is not
+templated by Ansible). To find what only lives in `torrents/` (single-link files, i.e. not in
+the library):
+```bash
+ansible beelink -m shell -a "find /data/torrents -type f -links 1 -size +100M -printf '%s\t%p\n' | sort -n" -b
+```
 
 **Quick Sync device present in Jellyfin:**
 ```bash
