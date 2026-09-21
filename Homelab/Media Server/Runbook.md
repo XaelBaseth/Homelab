@@ -436,7 +436,7 @@ The home for self-hosted apps that have nothing to do with media. Own compose pr
 | App | URL | Login |
 |---|---|---|
 | **Mealie** — recipes, meal planning | `http://192.168.1.19:9925` | its own (`ALLOW_SIGNUP=false`) |
-| **Seshat** — ebook library + OPDS for e-readers | `http://seshat.home` (NPM only, no port) | **NPM Access List** (Basic Auth) — Seshat has none |
+| **Seshat** — ebook library, web reader + OPDS for e-readers | `http://seshat.home` (NPM only, no port) | **NPM Access List** (Basic Auth) — Seshat has none |
 
 Mealie is on its own here since **linkding** (bookmarks) and **docs** (MkDocs Material, serving
 `docs/` from the repo root) were removed as unused — containers, appdata, NPM proxy hosts and the
@@ -473,19 +473,23 @@ All devices go through `http://seshat.home` and the NPM Access List credentials.
 DRM-free files: once downloaded, they read anywhere, offline included. Reaching the library
 itself from outside the LAN waits on Tailscale (deferred to the OPNsense phase).
 
-Seshat has **no built-in reader**: it manages the library (upload, metadata, conversion,
-search) and serves the files; reading happens in each device's own app.
+Seshat manages the library (upload, metadata, conversion, search) and has a **built-in web
+reader** for EPUBs: *Read* in a book's details opens it in a panel, AO3-style (one chapter at a
+time, scrolling, chapter index). The reading position is kept per browser, not synced between
+devices. For offline reading, download the file or pull it through OPDS instead.
 
 | Device | How | Reading |
 |---|---|---|
-| **PC** | Browser → `http://seshat.home` → book → *Download* (epub) | Foliate, Calibre's viewer, … |
-| **Phone** | OPDS catalog in the reader app: `http://seshat.home/api/v1/opds/<library>/catalog` + Access List user/password | KOReader or Librera (Android); any OPDS-capable reader on iOS |
+| **PC** | Browser → `http://seshat.home` → book → *Read* | Built-in web reader (or *Download* the epub for Foliate, Calibre's viewer, …) |
+| **Phone** | Browser → `http://seshat.home` → *Read*; for offline, the OPDS catalog in a reader app: `http://seshat.home/api/v1/opds/<library>/catalog` + Access List user/password | Built-in web reader online; KOReader or Librera (Android) / any OPDS-capable reader on iOS offline |
 | **Kindle Colorsoft** | No jailbreak: download the epub from Seshat on the PC, add it to **Calibre desktop**, *Send to device* over USB — Calibre converts to a Kindle format on the way | On the Kindle |
 
 Notes:
 - The exact OPDS URL of the active library is shown in Seshat's *OPDS Info* widget.
 - The Colorsoft (2024 generation) talks **MTP** over USB, not mass storage — use a recent
   Calibre, older versions don't see it.
+- *Read* only appears for books with an EPUB format; convert others to EPUB first (book →
+  *Convert*).
 - Seshat can also convert to `azw3` itself (book → *Convert*), if you'd rather skip Calibre's
   conversion and just copy the file.
 

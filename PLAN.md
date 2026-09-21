@@ -289,9 +289,10 @@ add the next service group.** Add services in this order, verifying each before 
     Access List; AdGuard rewrite if `*.home` isn't wildcarded; Uptime Kuma HTTP monitor
     `http://seshat:8000/readyz`.
     Setup steps in the Runbook (§ Webapps). No backup on purpose: the library is re-creatable.
-    Devices (Runbook § Seshat — connecting devices): PC = browser download; phone = OPDS app
-    (KOReader/Librera) with Access List creds; Kindle Colorsoft = no jailbreak, Calibre desktop
-    over USB (MTP). To verify once deployed, from home.
+    Devices (Runbook § Seshat — connecting devices): PC + phone = Seshat's built-in web reader
+    (AO3-style panel, epub.js) or OPDS app (KOReader/Librera) with Access List creds for offline;
+    Kindle Colorsoft = no jailbreak, Calibre desktop over USB (MTP). To verify once deployed,
+    from home.
 
 ## Deferred to OPNsense (future)
 - **LAN-wide DNS + `*.home` wildcard resolution** (via Unbound). Until then: per-device DNS
