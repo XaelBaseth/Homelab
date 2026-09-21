@@ -10,6 +10,62 @@
     - "{{ webapps_dir }}"
     - "{{ webapps_appdata }}"
     - "{{ webapps_appdata }}/mealie"      # Mealie's /app/data — SQLite db, recipe images, backups
+    - "{{ seshat_library_path }}"          # Seshat's /data/libraries — runs as PUID, so owned by it
+
+# ── Seshat image: built on the workstation, loaded here (no registry) ──
+# The image tag is the ref's short sha, so a tag or branch in seshat_ref still maps to
+# exactly one image.
+- name: Resolve the Seshat ref to its image tag
+  ansible.builtin.command: git -C {{ seshat_repo }} rev-parse --short=12 {{ seshat_ref }}^{commit}
+  delegate_to: localhost
+  become: false
+  run_once: true
+  changed_when: false
+  check_mode: false
+  register: seshat_sha
+
+- name: Set the Seshat image name
+  ansible.builtin.set_fact:
+    seshat_image: "seshat:{{ seshat_sha.stdout }}"
+    seshat_tarball: "/tmp/seshat-{{ seshat_sha.stdout }}.tar"
+
+- name: Check whether the Seshat image is already loaded
+  community.docker.docker_image_info:
+    name: "{{ seshat_image }}"
+  register: seshat_image_info
+
+- name: Build, ship and load the Seshat image
+  when: seshat_image_info.images | length == 0
+  block:
+    - name: Build and save the image on the workstation
+      ansible.builtin.command:
+        cmd: "{{ seshat_repo }}/infra/build-standalone.sh {{ seshat_sha.stdout }} {{ seshat_tarball }}"
+        creates: "{{ seshat_tarball }}"
+      delegate_to: localhost
+      become: false
+
+    - name: Copy the image tarball to the host
+      ansible.builtin.copy:
+        src: "{{ seshat_tarball }}"
+        dest: "{{ seshat_tarball }}"
+        mode: "0600"
+
+    - name: Load the image
+      community.docker.docker_image_load:
+        path: "{{ seshat_tarball }}"
+
+  always:
+    - name: Remove the tarball from the host
+      ansible.builtin.file:
+        path: "{{ seshat_tarball }}"
+        state: absent
+
+    - name: Remove the tarball from the workstation
+      ansible.builtin.file:
+        path: "{{ seshat_tarball }}"
+        state: absent
+      delegate_to: localhost
+      become: false
 
 - name: Render the stack environment file (secrets from the vault)
   ansible.builtin.template:

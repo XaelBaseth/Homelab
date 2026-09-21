@@ -1,10 +1,9 @@
 ---
 # ── Webapps stack: the self-hosted applications that aren't media ──
-# Mealie (recipes and meal planning) is the only one left; the stack keeps its plural
-# name because it is the landing place for the next non-media app.
+# Mealie (recipes and meal planning) and Seshat (ebook library).
 #
-# Like every other stack on this host, it sits behind no auth layer: each app keeps its
-# own login on its own published port, so nothing central can lock you out.
+# Mealie keeps its own login on its own published port. Seshat has no login at all, so
+# it publishes no port and is only reachable through NPM, whose Access List is its auth.
 mealie_image: ghcr.io/mealie-recipes/mealie:latest
 
 # Host paths (compose under the shared stacks_root; appdata alongside the other stacks)
@@ -14,3 +13,14 @@ webapps_appdata: /home/webapps/appdata
 # Published on purpose — this app is reached by IP:port on the LAN, not through NPM,
 # so there is no forward-auth gate to bypass.
 mealie_port: 9925
+
+# ── Seshat (ebook library) ──
+# No registry: the image is built on the workstation from a committed ref of the local
+# project-seshat checkout (infra/build-standalone.sh), shipped as a tarball and
+# `docker load`ed here. Bump seshat_ref to deploy another version; prefer a tag or a sha
+# over a branch, which would silently move.
+seshat_repo: "{{ lookup('env', 'HOME') }}/Documents/project-seshat"
+seshat_ref: 5cc4ecd0d07d
+seshat_library_path: "{{ media_root }}/books"   # books + SQLite dbs, on the ext4 media drive
+seshat_max_upload_mb: 500
+seshat_max_concurrent_conversions: 2

@@ -26,6 +26,33 @@ services:
       - glance.description=Recipes and meal planning
     restart: unless-stopped
 
+  seshat:
+    image: {{ seshat_image }}
+    container_name: seshat
+    pull_policy: never                 # local-only image (docker load); never look it up on Docker Hub
+    user: "${PUID}:${PGID}"            # library files on the HDD stay owned by the media user
+    environment:
+      - TZ=${TZ}
+      - MAX_UPLOAD_SIZE_MB={{ seshat_max_upload_mb }}
+      - MAX_CONCURRENT_CONVERSIONS={{ seshat_max_concurrent_conversions }}
+    volumes:
+      - {{ seshat_library_path }}:/data/libraries   # books + SQLite dbs — the only thing to back up
+    # No `ports:` on purpose — Seshat has no login; NPM (Access List) is the only way in.
+    networks:
+      - default
+      - homelab                        # NPM proxies seshat:8000; Glance / Uptime Kuma probe it by name
+    deploy:
+      resources:
+        limits:
+          memory: 1500M                # Calibre conversions of large books are the peak
+    labels:
+      - com.centurylinklabs.watchtower.enable=false   # local image, nothing to pull
+      - glance.name=Seshat
+      - glance.icon=di:calibre-web
+      - glance.url=http://seshat.{{ local_domain }}
+      - glance.description=Ebook library (OPDS for e-readers)
+    restart: unless-stopped
+
 networks:
   default:
   homelab:

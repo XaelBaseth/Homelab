@@ -108,6 +108,9 @@ pages:
                       - title: Mealie
                         url: http://mealie.{{ local_domain }}
                         icon: di:mealie
+                      - title: Seshat
+                        url: http://seshat.{{ local_domain }}
+                        icon: di:calibre-web
               - type: bookmarks
                 groups:
                   - title: Monitoring
@@ -453,6 +456,10 @@ pages:
                 url: http://mealie.{{ local_domain }}
                 check-url: http://{{ vault_beelink_host }}:9925
                 icon: di:mealie
+              - title: Seshat
+                url: http://seshat.{{ local_domain }}
+                check-url: http://seshat:8000/readyz   # no host port — reached over the homelab network
+                icon: di:calibre-web
 
           - type: monitor
             title: Administration

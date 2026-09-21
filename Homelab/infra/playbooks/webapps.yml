@@ -1,5 +1,5 @@
 ---
-- name: Deploy the webapps stack (Mealie)
+- name: Deploy the webapps stack (Mealie, Seshat)
   hosts: beelink
   become: true
   roles:

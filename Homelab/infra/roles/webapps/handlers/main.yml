@@ -2,5 +2,5 @@
 # `docker compose up` does not recreate a container just because a bind-mounted file
 # changed, so a .env edit needs an explicit bounce.
 - name: Restart webapps containers
-  ansible.builtin.command: docker restart mealie
+  ansible.builtin.command: docker restart mealie seshat
   changed_when: true
