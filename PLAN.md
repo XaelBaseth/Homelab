@@ -280,6 +280,15 @@ add the next service group.** Add services in this order, verifying each before 
     from one root. Glance gained an **Administration** group (bookmarks + monitor tile) and release
     tracking. No more SSH just to read logs or bounce a stack.
 
+  - **2.10** ▶️ authored, **not yet run** — **Seshat** (ebook library, own project) added to the
+    `webapps` role. Single image built on the workstation from a pinned commit of
+    `~/Documents/project-seshat` (`infra/build-standalone.sh`), shipped as a tarball and
+    `docker load`ed — no registry. Runs as PUID, library on `/data/books`, **no published port**
+    (Seshat has no login: NPM's Access List is its only auth). Glance bookmark + monitor added.
+    Manual after the first run: NPM proxy host `seshat.home` → `seshat:8000` + Basic Auth
+    Access List; AdGuard rewrite if `*.home` isn't wildcarded; Uptime Kuma HTTP monitor
+    `http://seshat:8000/readyz`.
+
 ## Deferred to OPNsense (future)
 - **LAN-wide DNS + `*.home` wildcard resolution** (via Unbound). Until then: per-device DNS
   or `/etc/hosts`. AdGuard optional to revisit then (or use Unbound directly).
