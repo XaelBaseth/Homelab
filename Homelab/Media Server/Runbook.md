@@ -467,6 +467,28 @@ ansible-playbook playbooks/webapps.yml
 Old image tags pile up on the Beelink (Watchtower ignores local images); prune with
 `docker image rm seshat:<old sha>` now and then.
 
+### Seshat — connecting devices
+
+All devices go through `http://seshat.home` and the NPM Access List credentials. Books are
+DRM-free files: once downloaded, they read anywhere, offline included. Reaching the library
+itself from outside the LAN waits on Tailscale (deferred to the OPNsense phase).
+
+Seshat has **no built-in reader**: it manages the library (upload, metadata, conversion,
+search) and serves the files; reading happens in each device's own app.
+
+| Device | How | Reading |
+|---|---|---|
+| **PC** | Browser → `http://seshat.home` → book → *Download* (epub) | Foliate, Calibre's viewer, … |
+| **Phone** | OPDS catalog in the reader app: `http://seshat.home/api/v1/opds/<library>/catalog` + Access List user/password | KOReader or Librera (Android); any OPDS-capable reader on iOS |
+| **Kindle Colorsoft** | No jailbreak: download the epub from Seshat on the PC, add it to **Calibre desktop**, *Send to device* over USB — Calibre converts to a Kindle format on the way | On the Kindle |
+
+Notes:
+- The exact OPDS URL of the active library is shown in Seshat's *OPDS Info* widget.
+- The Colorsoft (2024 generation) talks **MTP** over USB, not mass storage — use a recent
+  Calibre, older versions don't see it.
+- Seshat can also convert to `azw3` itself (book → *Convert*), if you'd rather skip Calibre's
+  conversion and just copy the file.
+
 ### First-time setup
 
 1. **Mealie** — log in with the first-run default (`changeme@example.com` / `MyPassword`), then
