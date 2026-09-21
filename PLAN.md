@@ -288,6 +288,7 @@ add the next service group.** Add services in this order, verifying each before 
     Manual after the first run: NPM proxy host `seshat.home` → `seshat:8000` + Basic Auth
     Access List; AdGuard rewrite if `*.home` isn't wildcarded; Uptime Kuma HTTP monitor
     `http://seshat:8000/readyz`.
+    Setup steps in the Runbook (§ Webapps). No backup on purpose: the library is re-creatable.
 
 ## Deferred to OPNsense (future)
 - **LAN-wide DNS + `*.home` wildcard resolution** (via Unbound). Until then: per-device DNS

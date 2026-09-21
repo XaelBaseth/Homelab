@@ -85,7 +85,7 @@ ansible-playbook playbooks/administration.yml
 # Deploy AdGuard Home (DNS ad-blocking + *.home names) — first run needs the wizard, see below
 ansible-playbook playbooks/adguard.yml
 
-# Deploy the webapps stack (Mealie)
+# Deploy the webapps stack (Mealie, Seshat) — ships seshat:latest from this workstation if it changed
 ansible-playbook playbooks/webapps.yml
 
 # Full converge (everything)
@@ -428,7 +428,7 @@ delete those tasks after the first post-consolidation converge.
 `roles/monitoring/defaults/main.yml` → service block in the compose template → any `appdata` dir
 in the tasks loop → `ansible-playbook playbooks/monitoring.yml`.
 
-## Webapps stack (Mealie)
+## Webapps stack (Mealie, Seshat)
 
 The home for self-hosted apps that have nothing to do with media. Own compose project at
 `/home/stacks/webapps`, appdata at `/home/webapps/appdata`.
@@ -436,6 +436,7 @@ The home for self-hosted apps that have nothing to do with media. Own compose pr
 | App | URL | Login |
 |---|---|---|
 | **Mealie** — recipes, meal planning | `http://192.168.1.19:9925` | its own (`ALLOW_SIGNUP=false`) |
+| **Seshat** — ebook library + OPDS for e-readers | `http://seshat.home` (NPM only, no port) | **NPM Access List** (Basic Auth) — Seshat has none |
 
 Mealie is on its own here since **linkding** (bookmarks) and **docs** (MkDocs Material, serving
 `docs/` from the repo root) were removed as unused — containers, appdata, NPM proxy hosts and the
@@ -447,11 +448,40 @@ whole access model now (§ *Access model*). Mealie is on the `homelab` network t
 want it behind a `mealie.home` proxy host in NPM it costs one form and nothing else; remember to
 update its `BASE_URL`, which feeds the links in its notifications.
 
+### Seshat — the exception to the access model
+
+Seshat is our own project (`~/Documents/project-seshat`) and has **no login**, so unlike every
+other app it publishes **no port**: the only way in is NPM's `seshat.home` proxy host, whose
+Access List *is* its authentication. Never add a `ports:` entry to it.
+
+There is no registry either. The image is built by hand on this workstation and the role ships it:
+
+```bash
+# 1. In project-seshat: build from a committed ref → seshat:<sha> + seshat:latest
+infra/build-standalone.sh
+# 2. Here: the role docker-saves seshat:latest, copies it and docker-loads it on the Beelink —
+#    only when its image ID differs from the Beelink's copy; compose then recreates the container
+ansible-playbook playbooks/webapps.yml
+```
+
+Old image tags pile up on the Beelink (Watchtower ignores local images); prune with
+`docker image rm seshat:<old sha>` now and then.
+
 ### First-time setup
 
 1. **Mealie** — log in with the first-run default (`changeme@example.com` / `MyPassword`), then
    change the email and password immediately in *Settings → Profile*. Nobody can self-register.
 2. **Uptime Kuma** — add an HTTP monitor for `:9925` in its UI, as usual.
+3. **Seshat** — after the first `webapps.yml` run:
+   - **NPM** → *Access Lists* → add `seshat` (Authorization: a user + password, no IP rules)
+     → *Proxy Hosts* → `seshat.home` → `seshat` : `8000` (http), Access List `seshat`. NPM's
+     default body limit (2000 MB) already covers `MAX_UPLOAD_SIZE_MB`.
+   - **AdGuard** → *Filters → DNS rewrites*: `seshat.home` → `192.168.1.19`, unless a `*.home`
+     wildcard already exists.
+   - **Uptime Kuma** → HTTP monitor `http://seshat:8000/readyz` (it's on the `homelab` network).
+   - **Seshat UI** → create a library, then read its OPDS URL in the *OPDS Info* widget:
+     `http://seshat.home/api/v1/opds/<library>/catalog` — use it with the Access List
+     credentials in KOReader / Librera / Moon+ Reader.
 
 **Adding a service** mirrors the media-stack flow: image tag in `roles/webapps/defaults/main.yml`
 → service block in the compose template → any `appdata` dir in the tasks loop → Glance bookmark +
