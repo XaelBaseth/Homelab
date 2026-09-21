@@ -48,7 +48,7 @@ services:
     labels:
       - com.centurylinklabs.watchtower.enable=false   # local image, nothing to pull
       - glance.name=Seshat
-      - glance.icon=di:calibre-web
+      - glance.icon=http://seshat.{{ local_domain }}/favicon.svg   # our own emblem, served by Seshat itself
       - glance.url=http://seshat.{{ local_domain }}
       - glance.description=Ebook library, web reader + OPDS
     restart: unless-stopped
