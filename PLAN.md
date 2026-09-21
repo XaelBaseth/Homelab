@@ -280,19 +280,19 @@ add the next service group.** Add services in this order, verifying each before 
     from one root. Glance gained an **Administration** group (bookmarks + monitor tile) and release
     tracking. No more SSH just to read logs or bounce a stack.
 
-  - **2.10** ▶️ authored, **not yet run** — **Seshat** (ebook library, own project) added to the
+  - **2.10** ✅ done — **Seshat** (ebook library, own project) added to the
     `webapps` role. Single image `seshat_image` (default `seshat:latest`) built by hand on
     the workstation (`project-seshat/infra/build-standalone.sh`); the role ships it with
     `docker save`/`load` whenever its image ID differs from the host's — no registry. Runs as PUID, library on `/data/books`, **no published port**
-    (Seshat has no login: NPM's Access List is its only auth). Glance bookmark + monitor added.
-    Manual after the first run: NPM proxy host `seshat.home` → `seshat:8000` + Basic Auth
-    Access List; AdGuard rewrite if `*.home` isn't wildcarded; Uptime Kuma HTTP monitor
-    `http://seshat:8000/readyz`.
+    (reached by name only). No auth: Seshat has no login and stays open on the LAN, NPM only
+    gives it a name. Glance bookmark + monitor added. Manual after the first run: NPM proxy
+    host `seshat.home` → `seshat:8000` (no Access List; AdGuard's `*.home` rewrite already
+    resolves it); Uptime Kuma HTTP monitor `http://seshat:8000/readyz`. Deployed and verified:
+    container healthy, `/readyz` ok, first ebook uploaded through `seshat.home`.
     Setup steps in the Runbook (§ Webapps). No backup on purpose: the library is re-creatable.
     Devices (Runbook § Seshat — connecting devices): PC + phone = Seshat's built-in web reader
-    (AO3-style panel, epub.js) or OPDS app (KOReader/Librera) with Access List creds for offline;
-    Kindle Colorsoft = no jailbreak, Calibre desktop over USB (MTP). To verify once deployed,
-    from home.
+    (AO3-style panel, epub.js) or OPDS app (KOReader/Librera) for offline, no credentials;
+    Kindle Colorsoft = no jailbreak, Send to Kindle or Calibre desktop over USB (MTP).
 
 ## Deferred to OPNsense (future)
 - **LAN-wide DNS + `*.home` wildcard resolution** (via Unbound). Until then: per-device DNS

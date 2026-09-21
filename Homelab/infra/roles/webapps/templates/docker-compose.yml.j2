@@ -37,7 +37,7 @@ services:
       - MAX_CONCURRENT_CONVERSIONS={{ seshat_max_concurrent_conversions }}
     volumes:
       - {{ seshat_library_path }}:/data/libraries   # books + SQLite dbs — the only thing to back up
-    # No `ports:` on purpose — Seshat has no login; NPM (Access List) is the only way in.
+    # No `ports:` on purpose — reached by name only, through NPM's seshat.home proxy host.
     networks:
       - default
       - homelab                        # NPM proxies seshat:8000; Glance / Uptime Kuma probe it by name

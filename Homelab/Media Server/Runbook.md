@@ -436,7 +436,7 @@ The home for self-hosted apps that have nothing to do with media. Own compose pr
 | App | URL | Login |
 |---|---|---|
 | **Mealie** — recipes, meal planning | `http://192.168.1.19:9925` | its own (`ALLOW_SIGNUP=false`) |
-| **Seshat** — ebook library, web reader + OPDS for e-readers | `http://seshat.home` (NPM only, no port) | **NPM Access List** (Basic Auth) — Seshat has none |
+| **Seshat** — ebook library, web reader + OPDS for e-readers | `http://seshat.home` (NPM only, no port) | none — open on the LAN |
 
 Mealie is on its own here since **linkding** (bookmarks) and **docs** (MkDocs Material, serving
 `docs/` from the repo root) were removed as unused — containers, appdata, NPM proxy hosts and the
@@ -450,9 +450,11 @@ update its `BASE_URL`, which feeds the links in its notifications.
 
 ### Seshat — the exception to the access model
 
-Seshat is our own project (`~/Documents/project-seshat`) and has **no login**, so unlike every
-other app it publishes **no port**: the only way in is NPM's `seshat.home` proxy host, whose
-Access List *is* its authentication. Never add a `ports:` entry to it.
+Seshat is our own project (`~/Documents/project-seshat`) and has **no login**. Like Bazarr or
+Maintainerr, it is simply open on the LAN — no Access List. Unlike every other app it publishes
+**no port**: it is reached by name only, through NPM's `seshat.home` proxy host (`seshat:8000`
+over the `homelab` network); `192.168.1.19:8000` does not answer. The `*.home` rewrite in AdGuard
+already resolves the name.
 
 There is no registry either. The image is built by hand on this workstation and the role ships it:
 
@@ -464,12 +466,13 @@ infra/build-standalone.sh
 ansible-playbook playbooks/webapps.yml
 ```
 
-Old image tags pile up on the Beelink (Watchtower ignores local images); prune with
-`docker image rm seshat:<old sha>` now and then.
+Only `seshat:latest` is shipped, so each new build leaves the previous one on the Beelink as a
+dangling `<none>` image (Watchtower ignores local images); clear them with `docker image prune`
+now and then.
 
 ### Seshat — connecting devices
 
-All devices go through `http://seshat.home` and the NPM Access List credentials. Books are
+All devices go through `http://seshat.home`, no credentials. Books are
 DRM-free files: once downloaded, they read anywhere, offline included. Reaching the library
 itself from outside the LAN waits on Tailscale (deferred to the OPNsense phase).
 
@@ -481,8 +484,8 @@ devices. For offline reading, download the file or pull it through OPDS instead.
 | Device | How | Reading |
 |---|---|---|
 | **PC** | Browser → `http://seshat.home` → book → *Read* | Built-in web reader (or *Download* the epub for Foliate, Calibre's viewer, …) |
-| **Phone** | Browser → `http://seshat.home` → *Read*; for offline, the OPDS catalog in a reader app: `http://seshat.home/api/v1/opds/<library>/catalog` + Access List user/password | Built-in web reader online; KOReader or Librera (Android) / any OPDS-capable reader on iOS offline |
-| **Kindle Colorsoft** | No jailbreak: download the epub from Seshat on the PC, add it to **Calibre desktop**, *Send to device* over USB — Calibre converts to a Kindle format on the way | On the Kindle |
+| **Phone** | Browser → `http://seshat.home` → *Read*; for offline, the OPDS catalog in a reader app: `http://seshat.home/api/v1/opds/<library>/catalog` (no user/password) | Built-in web reader online; KOReader or Librera (Android) / any OPDS-capable reader on iOS offline |
+| **Kindle Colorsoft** | No jailbreak. Wireless: download the epub from Seshat, then **Send to Kindle** (app, `amazon.com/sendtokindle` or the Kindle's email address) — Amazon converts it and syncs it via the cloud. Wired: add the epub to **Calibre desktop**, *Send to device* over USB — Calibre converts on the way | On the Kindle |
 
 Notes:
 - The exact OPDS URL of the active library is shown in Seshat's *OPDS Info* widget.
@@ -499,15 +502,15 @@ Notes:
    change the email and password immediately in *Settings → Profile*. Nobody can self-register.
 2. **Uptime Kuma** — add an HTTP monitor for `:9925` in its UI, as usual.
 3. **Seshat** — after the first `webapps.yml` run:
-   - **NPM** → *Access Lists* → add `seshat` (Authorization: a user + password, no IP rules)
-     → *Proxy Hosts* → `seshat.home` → `seshat` : `8000` (http), Access List `seshat`. NPM's
-     default body limit (2000 MB) already covers `MAX_UPLOAD_SIZE_MB`.
-   - **AdGuard** → *Filters → DNS rewrites*: `seshat.home` → `192.168.1.19`, unless a `*.home`
-     wildcard already exists.
+   - **NPM** → *Proxy Hosts* → `seshat.home` → `seshat` : `8000` (http), Access List
+     *Publicly Accessible*, *Block Common Exploits* on. Forward to the container name, not
+     `192.168.1.19:8000` — no port is published. NPM's default body limit (2000 MB) already
+     covers `MAX_UPLOAD_SIZE_MB`.
+   - **AdGuard** → nothing: the `*.home` rewrite already covers `seshat.home`.
    - **Uptime Kuma** → HTTP monitor `http://seshat:8000/readyz` (it's on the `homelab` network).
    - **Seshat UI** → create a library, then read its OPDS URL in the *OPDS Info* widget:
-     `http://seshat.home/api/v1/opds/<library>/catalog` — use it with the Access List
-     credentials in KOReader / Librera / Moon+ Reader.
+     `http://seshat.home/api/v1/opds/<library>/catalog` — add it as-is (no credentials) in
+     KOReader / Librera / Moon+ Reader.
 
 **Adding a service** mirrors the media-stack flow: image tag in `roles/webapps/defaults/main.yml`
 → service block in the compose template → any `appdata` dir in the tasks loop → Glance bookmark +

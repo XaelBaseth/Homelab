@@ -2,8 +2,8 @@
 # ── Webapps stack: the self-hosted applications that aren't media ──
 # Mealie (recipes and meal planning) and Seshat (ebook library).
 #
-# Mealie keeps its own login on its own published port. Seshat has no login at all, so
-# it publishes no port and is only reachable through NPM, whose Access List is its auth.
+# Mealie keeps its own login on its own published port. Seshat has no login and stays open
+# on the LAN; it publishes no port and is reached by name through NPM's seshat.home host.
 mealie_image: ghcr.io/mealie-recipes/mealie:latest
 
 # Host paths (compose under the shared stacks_root; appdata alongside the other stacks)
