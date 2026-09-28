@@ -1,6 +1,0 @@
----
-# `docker compose up` does not recreate a container just because its env file changed,
-# so a .env edit needs an explicit bounce. The frontend reads nothing from .env.
-- name: Restart LanGuard containers
-  ansible.builtin.command: docker restart languard-backend languard-scanner
-  changed_when: true

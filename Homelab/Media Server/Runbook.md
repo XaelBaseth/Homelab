@@ -555,6 +555,14 @@ thing to back up).
   `roles/languard/defaults/main.yml`, run `ansible-playbook playbooks/languard.yml`.
 - **Plain HTTP on purpose.** `ENVIRONMENT` stays unset: `production` turns on `Secure` cookies,
   and login then fails over HTTP.
+- **Its own resolver, AdGuard first.** LanGuard names devices by reverse DNS through the host's
+  resolvers — the Livebox, whose names went stale when its DHCP went off (`.13` still answered
+  `desktop-de36sko`, not `tour`). The role mounts a `resolv.conf` into the backend and scanner
+  only: AdGuard, then the Livebox and Quad9 as fallback. AdGuard answers PTR from its DHCP leases
+  (`tour.lan`, `debianxael.lan`, …). The host itself still never uses AdGuard.
+- **An interrupted scan blocks scans for 30 minutes.** A scan killed mid-run (restart, reboot)
+  stays `running` in the database until its lock goes stale (`SCAN_LOCK_STALE_SECONDS`, 1800 s);
+  the logs say `Scheduled scan skipped: A scheduled scan is already running`. It clears itself.
 
 ### First-time setup
 
@@ -573,12 +581,36 @@ thing to back up).
    `languard_ip_range` on the first start; the UI owns it after that).
 6. **Alerts** → *Settings → Notifications* → Discord → paste `vault_discord_webhook_url` (the
    alert channel), event **New device**. Send a test.
-7. **Name the known devices** once the first scans are in: room, role, *regular* / *visitor*. The
-   static leases already in AdGuard give you the names. An unknown MAC is the thing to look at.
+7. **Name the devices** — see *Naming devices* below.
 8. **Uptime Kuma** → HTTP monitor `http://192.168.1.19:8480/api/v1/health/` (goes through the
    UI to the backend, so it fails if either is down).
 
-### AdGuard integration
+### Naming devices
+
+LanGuard keys each device by **MAC address**, not IP. Its name comes, in order, from reverse DNS
+(= AdGuard's DHCP lease name), mDNS, SSDP, LLMNR then NetBIOS, and its vendor from the MAC prefix.
+A new device starts **Unknown**; once you mark it **Known**, scans stop overwriting what you set.
+
+1. **Fix names at the source first, in AdGuard.** A device that sends no hostname gets a lease
+   named after its IP (`192-168-1-104`), which LanGuard can't use. For anything that stays in the
+   house, add a **static lease** in AdGuard (*Settings → DHCP settings → Static leases*: MAC, IP
+   outside `.100`–`.199`, a clean name). It gets a fixed IP, a proper PTR name, and a name in
+   AdGuard's query log too. The next scan picks it up.
+   The Beelink (`.19`) is the one device with no lease at all (static IP on the host), so it
+   never gets a name this way: name it by hand in LanGuard.
+2. **Phones and tablets use a random MAC per Wi-Fi network** (second hex digit 2, 6, A or E —
+   `8e:29:…` is one). Set the home Wi-Fi to the *device* MAC (Android: *Wi-Fi → network → Privacy
+   → Use device MAC*; iOS: *Private Wi-Fi Address* off for that network), or the phone comes back
+   as a new Unknown device every time the address rotates.
+3. **Then review in LanGuard** → *Devices*, filter **Unknown**. For each one: *Edit device* →
+   name, **role** and **icon**, **room** (drives the Home Map), then classify:
+   - **Known** — lives here (PCs, phones, TV, vacuum, switch, the Beelink);
+   - **Visitor** — comes and goes (guests' phones): no Home Map, no long-offline alert;
+   - **Archive** — gone for good (history kept; it comes back if it reappears).
+   The bulk *mark as known* works too, after checking names and MACs.
+4. **What's left Unknown is the point.** From now on, an unknown MAC means a device nobody has
+   reviewed: it triggers the Discord *New device* alert and sits under *Needs Attention*.
+
 
 LanGuard reads AdGuard's **query log** (read-only: its code only sends `GET` to `/control/status`,
 `/control/querylog/config` and `/control/querylog`) and stores counters per device, domain and

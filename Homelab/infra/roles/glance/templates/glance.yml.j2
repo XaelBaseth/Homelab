@@ -123,7 +123,7 @@ pages:
                         icon: di:beszel
                       - title: LanGuard
                         url: http://languard.{{ local_domain }}
-                        icon: http://languard.{{ local_domain }}/logo.png   # not in dashboard-icons; served by LanGuard itself
+                        icon: http://languard.{{ local_domain }}/logo.svg   # not in dashboard-icons; served by LanGuard itself
                   - title: Administration
                     links:
                       - title: Dozzle
@@ -454,7 +454,7 @@ pages:
               - title: LanGuard
                 url: http://languard.{{ local_domain }}
                 check-url: http://{{ vault_beelink_host }}:8480/api/v1/health/   # through the frontend, so it fails if either half is down
-                icon: http://languard.{{ local_domain }}/logo.png
+                icon: http://languard.{{ local_domain }}/logo.svg
 
           - type: monitor
             title: Apps

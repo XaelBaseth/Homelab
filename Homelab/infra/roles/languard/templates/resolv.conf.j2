@@ -1,0 +1,9 @@
+# Managed by Ansible (languard role) — mounted into the LanGuard backend and scanner only.
+# AdGuard first: it is the DHCP server, so its PTR answers carry the current lease names
+# (the Livebox's are stale since its DHCP went off). The host itself never uses AdGuard.
+# The Livebox and Quad9 are the fallback if AdGuard is down; timeout:1 keeps scans moving.
+nameserver {{ vault_beelink_host }}
+{% for server in common_host_dns | default(['192.168.1.1', '9.9.9.9']) %}
+nameserver {{ server }}
+{% endfor %}
+options timeout:1 attempts:1

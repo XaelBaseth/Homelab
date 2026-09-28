@@ -31,7 +31,16 @@
     owner: "{{ media_owner }}"
     group: "{{ media_group }}"
     mode: "0600"
-  notify: Restart LanGuard containers
+  register: languard_env
+
+- name: Render the resolver file (AdGuard first, for device names)
+  ansible.builtin.template:
+    src: resolv.conf.j2
+    dest: "{{ languard_dir }}/resolv.conf"
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0644"
+  register: languard_resolv
 
 - name: Render the docker-compose file
   ansible.builtin.template:
@@ -41,8 +50,12 @@
     group: "{{ media_group }}"
     mode: "0644"
 
+# `compose up` doesn't recreate a container when only its env file or a mounted file
+# changed, so those force a recreate. Not a restart handler: on the first deploy it would
+# kill the first scan, whose lock then blocks every scan for 30 minutes.
 - name: Deploy LanGuard
   community.docker.docker_compose_v2:
     project_src: "{{ languard_dir }}"
     state: present
     remove_orphans: true
+    recreate: "{{ 'always' if (languard_env.changed or languard_resolv.changed) else 'auto' }}"
