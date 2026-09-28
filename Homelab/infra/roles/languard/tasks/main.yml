@@ -1,0 +1,48 @@
+---
+# SECRET_KEY signs sessions; the backend and the scheduler must share it. Failing here beats
+# starting with upstream's placeholder key.
+- name: Check the LanGuard secret key is in the vault
+  ansible.builtin.assert:
+    that:
+      - vault_languard_secret_key is defined
+      - vault_languard_secret_key | length >= 32
+    fail_msg: >-
+      Set vault_languard_secret_key (openssl rand -base64 48) in
+      inventory/group_vars/all/vault.yml — see the LanGuard section of the Runbook.
+    quiet: true
+
+- name: Create the LanGuard stack directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0755"
+  loop:
+    - "{{ languard_dir }}"
+    - "{{ languard_appdata }}"
+    - "{{ languard_appdata }}/data"     # SQLite db: devices, history, settings, integrations
+    - "{{ languard_appdata }}/static"   # Django static files, rebuilt on every start
+
+- name: Render the stack environment file (secret key from the vault)
+  ansible.builtin.template:
+    src: env.j2
+    dest: "{{ languard_dir }}/.env"
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0600"
+  notify: Restart LanGuard containers
+
+- name: Render the docker-compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ languard_dir }}/docker-compose.yml"
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0644"
+
+- name: Deploy LanGuard
+  community.docker.docker_compose_v2:
+    project_src: "{{ languard_dir }}"
+    state: present
+    remove_orphans: true

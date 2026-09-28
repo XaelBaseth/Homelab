@@ -1,0 +1,6 @@
+---
+- name: Deploy LanGuard (LAN device inventory + new-device alerts, fed by AdGuard)
+  hosts: beelink
+  become: true
+  roles:
+    - languard

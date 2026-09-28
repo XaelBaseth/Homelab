@@ -37,6 +37,16 @@ stack from home today; these are the "next phase" items — most tied to standin
 
 ## Done
 
+- **LanGuard** (the `languard` role) — device inventory of the LAN and a Discord alert when an
+  unknown device joins; the one thing the stack couldn't see (Uptime Kuma and Beszel watch
+  services, AdGuard lists leases but never alerts). Host network + privileged for ARP, UI on
+  **8480** (8080 is qBittorrent's), pinned and outside Watchtower, no Docker socket.
+  - **Reads AdGuard's query log** through a dedicated `languard` AdGuard user. AdGuard has no
+    read-only accounts, so that user can change the house's DNS: kept separate so it can be
+    revoked alone.
+  - **Overlap with OPNsense:** the firewall will see leases and ARP too. Re-check then whether
+    LanGuard still earns its privileged containers.
+
 - **Webapps stack** (the `webapps` role) — the home for self-hosted apps that aren't media.
   Own compose project, published host ports, each app on its own login — **deliberately outside
   SSO**, same reasoning as administration/monitoring/glance. **Mealie** (recipes/meal planning)

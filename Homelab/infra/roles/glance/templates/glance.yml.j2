@@ -121,6 +121,9 @@ pages:
                       - title: Beszel
                         url: http://beszel.{{ local_domain }}
                         icon: di:beszel
+                      - title: LanGuard
+                        url: http://languard.{{ local_domain }}
+                        icon: http://languard.{{ local_domain }}/logo.png   # not in dashboard-icons; served by LanGuard itself
                   - title: Administration
                     links:
                       - title: Dozzle
@@ -243,6 +246,7 @@ pages:
               - qdm12/gluetun
               - louislam/uptime-kuma
               - henrygd/beszel
+              - hillaliy/LanGuard
               - amir20/dozzle
               - louislam/dockge
               - nicholas-fedor/watchtower
@@ -447,6 +451,10 @@ pages:
                 url: http://beszel.{{ local_domain }}
                 check-url: http://{{ vault_beelink_host }}:8090
                 icon: di:beszel
+              - title: LanGuard
+                url: http://languard.{{ local_domain }}
+                check-url: http://{{ vault_beelink_host }}:8480/api/v1/health/   # through the frontend, so it fails if either half is down
+                icon: http://languard.{{ local_domain }}/logo.png
 
           - type: monitor
             title: Apps

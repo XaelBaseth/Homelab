@@ -1,0 +1,22 @@
+---
+# ── LanGuard: LAN device inventory + "new device" alerts, fed by AdGuard's query log ──
+# Three images that must always be the same release: bump the three tags together, by hand
+# (all three are excluded from Watchtower in the compose file). Release notes before a bump:
+# https://hillaliy.github.io/LanGuard/docs/release-notes
+languard_version: "1.21.0"
+languard_backend_image: "ghcr.io/hillaliy/languard-backend:{{ languard_version }}"
+languard_scheduler_image: "ghcr.io/hillaliy/languard-scheduler:{{ languard_version }}"
+languard_frontend_image: "ghcr.io/hillaliy/languard-frontend:{{ languard_version }}"
+
+# Host paths (compose under the shared stacks_root; appdata alongside the other stacks)
+languard_dir: "{{ stacks_root }}/languard"
+languard_appdata: /home/languard/appdata
+
+# Host network, so these are host ports. Upstream's 8080 is qBittorrent's (via gluetun):
+# the web UI moves to 8480. The backend keeps upstream's 8000, free on the host.
+languard_frontend_port: 8480
+languard_backend_port: 8000
+
+# First scan range, written to the database on the first start only. After that, ranges
+# live in Settings > Scanning (UI), and this value is ignored.
+languard_ip_range: 192.168.1.0/24

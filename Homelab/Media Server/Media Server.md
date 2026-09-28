@@ -38,8 +38,11 @@ Internet
    ├── compose project: "webapps"      (/home/stacks/webapps)
    │     └── mealie   (:9925 — recipes/meal planning)
    │
-   └── compose project: "adguard"      (/home/stacks/adguard)
-         └── adguard  (host network — the LAN's DNS :53 + DHCP :67, ad blocking + *.home; admin :3000)
+   ├── compose project: "adguard"      (/home/stacks/adguard)
+   │     └── adguard  (host network — the LAN's DNS :53 + DHCP :67, ad blocking + *.home; admin :3000)
+   │
+   └── compose project: "languard"     (/home/stacks/languard)
+         └── backend · scanner · frontend  (host network, ARP scans; UI :8480 — reads AdGuard's query log)
 
 Storage:  /data (ext4)  →  torrents/{movies,tv} + media/{movies,tv}  (same fs ⇒ hardlinks)
           /home/docker            = Docker data-root (images/volumes)
@@ -69,6 +72,7 @@ on the normal network.
 | **glance** | Dashboard (separate project) | 8280 | `/home/glance/config/glance.yml` |
 | **adguard** | The LAN's DNS + DHCP server: ad/tracker/malware blocking + `*.home` rewrites (own project) | 53 (DNS) / 67 (DHCP) / 3000 (admin) | `adguard/{conf,work}` |
 | **mealie** | Recipes + meal planning (own project, own login) | 9925 | `/home/webapps/appdata/mealie/` |
+| **languard** | LAN device inventory + Discord alert on new devices; per-device DNS activity from AdGuard (own project) | 8480 (UI) / 8000 (API) | `/home/languard/appdata/data/` |
 
 Every app answers at **`http://<beelink-ip>:<port>`** — the route that always works — and at a
 clean `*.home` name: AdGuard is the LAN's DHCP server (the Livebox's is off, it can't hand out

@@ -12,3 +12,4 @@
     - monitoring
     - administration
     - adguard
+    - languard      # after adguard: it reads AdGuard's query log

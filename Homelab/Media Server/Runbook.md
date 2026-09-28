@@ -18,13 +18,14 @@ infra/
 │       ├── vars.yml            # non-secret config (PUID/PGID, paths, timezone, local_domain, GPU GIDs)
 │       └── vault.yml           # ENCRYPTED secrets (see below)
 ├── playbooks/
-│   ├── site.yml                # full run: common → storage → docker → media_stack → webapps → glance → monitoring → administration → adguard
+│   ├── site.yml                # full run: common → storage → docker → media_stack → webapps → glance → monitoring → administration → adguard → languard
 │   ├── media.yml               # just the media stack (fast iteration)
 │   ├── dashboard.yml           # just Glance
 │   ├── monitoring.yml          # just the monitoring stack (Uptime Kuma + Beszel + heartbeat)
 │   ├── administration.yml      # just the admin stack (Dozzle + Dockge + Watchtower)
 │   ├── webapps.yml             # just the webapps stack (Mealie + Seshat)
 │   ├── adguard.yml             # just AdGuard Home (LAN DNS + *.home rewrite)
+│   ├── languard.yml            # just LanGuard (LAN device inventory + new-device alerts)
 │   ├── storage-provision.yml   # run ONCE by hand against a brand-new media drive
 │   └── update.yml              # manual weekly apt upgrade
 └── roles/
@@ -36,7 +37,8 @@ infra/
     ├── monitoring/             # Uptime Kuma + Beszel + healthchecks.io cron  (OBSERVE only)
     ├── administration/         # Dozzle (logs) + Dockge (mgmt) + Watchtower (notify)  (ACT on containers)
     ├── webapps/                # Mealie + Seshat (non-media apps)
-    └── adguard/                # AdGuard Home (LAN DNS, *.home rewrite, ad-blocking)
+    ├── adguard/                # AdGuard Home (LAN DNS, *.home rewrite, ad-blocking)
+    └── languard/               # LanGuard (device inventory, new-device alerts, AdGuard query-log import)
 ```
 
 ## What's in the vault
@@ -64,6 +66,10 @@ infra/
   container (visible in Dozzle) instead of pinging Discord
 - `vault_uptime_kuma_api_key` / `vault_beszel_user` / `vault_beszel_password` /
   `vault_status_report_webhook` — read by the daily status digest (monitoring role)
+- `vault_languard_secret_key` — LanGuard's Django `SECRET_KEY` (`openssl rand -base64 48`); required,
+  the role stops without it
+- `vault_languard_adguard_password` — password of the dedicated `languard` AdGuard user
+  (reference; pasted into LanGuard's UI)
 
 The `vault_lldap_*` and `vault_authelia_*` keys were removed with the SSO layer. An older backup
 of the vault will still contain them; that is expected, not corruption.
@@ -91,6 +97,9 @@ ansible-playbook playbooks/adguard.yml
 
 # Deploy the webapps stack (Mealie, Seshat) — ships seshat:latest from this workstation if it changed
 ansible-playbook playbooks/webapps.yml
+
+# Deploy LanGuard (LAN device inventory + new-device alerts) — needs vault_languard_secret_key
+ansible-playbook playbooks/languard.yml
 
 # Full converge (everything)
 ansible-playbook playbooks/site.yml
@@ -235,6 +244,7 @@ portal, no forward auth, no certificate and no name to resolve. Use Glance
 | qBittorrent | 8080 | its own, always prompted |
 | NPM / AdGuard / Uptime Kuma / Beszel | 81 / 3000 / 3001 / 8090 | each its own |
 | Dozzle / Dockge / Glance / Mealie | 8888 / 5001 / 8280 / 9925 | each its own |
+| LanGuard | 8480 | its own (first account = admin) |
 
 **The `.home` names work on every device** once AdGuard hands out DNS by DHCP (see *LAN-wide
 rollout* in the AdGuard section): one NPM proxy host per app. They are the everyday route, never
@@ -520,6 +530,96 @@ Notes:
 → service block in the compose template → any `appdata` dir in the tasks loop → Glance bookmark +
 monitor entry in `roles/glance/templates/glance.yml.j2` → `ansible-playbook playbooks/webapps.yml`.
 
+## LanGuard — who's on the LAN
+
+Inventory of every device on the network (IP, MAC, vendor, open ports, IP history) and a
+**Discord alert when an unknown device joins**. With the AdGuard integration, it also shows which
+domains each device queries and how much of it is blocked. Own compose project at
+`/home/stacks/languard`, appdata at `/home/languard/appdata` (`data/` = the SQLite db, the only
+thing to back up).
+
+| URL | Login |
+|---|---|
+| `http://languard.home` or `http://192.168.1.19:8480` | its own — the **first account created becomes admin**, there is no default |
+
+**Why it looks like AdGuard, not like the other stacks:**
+- **Host network + `privileged`** (backend and scanner). ARP discovery needs Layer 2 access to the
+  LAN, which Docker's NAT hides. So no `homelab` network: NPM and Glance reach it by
+  `192.168.1.19:8480`, like AdGuard's `:3000`.
+- **Ports moved.** Upstream's UI port is 8080, which is qBittorrent's (via gluetun) → **8480**. The
+  backend keeps **8000** (free on the host; it answers there too, same login).
+- **No Docker socket.** Upstream mounts it for its *Docker inventory* integration; Beszel and
+  Dozzle already cover that, and a socket is root on the host even `:ro`. Leave that integration off.
+- **Pinned, excluded from Watchtower.** Three images (backend, scheduler, frontend) that must stay
+  on the same release. Upgrade by hand: read the release notes, bump `languard_version` in
+  `roles/languard/defaults/main.yml`, run `ansible-playbook playbooks/languard.yml`.
+- **Plain HTTP on purpose.** `ENVIRONMENT` stays unset: `production` turns on `Secure` cookies,
+  and login then fails over HTTP.
+
+### First-time setup
+
+1. **Secret key** → `ansible-vault edit inventory/group_vars/all/vault.yml` → add
+   `vault_languard_secret_key: <openssl rand -base64 48>`. The role refuses to run without it
+   (at least 32 characters).
+2. **Deploy** → `ansible-playbook playbooks/languard.yml`. The first start runs database
+   migrations: the backend takes up to a minute to turn healthy, the scanner and UI wait for it.
+3. **NPM** → *Proxy Hosts* → `languard.home` → `http` · `192.168.1.19` : `8480`, *Block Common
+   Exploits* on, Access List *Publicly Accessible* (LanGuard has its own login). Forward to the IP,
+   not a container name — it is on the host network. **AdGuard** → nothing: the `*.home` rewrite
+   already resolves `languard.home`.
+4. **Account** → open `http://languard.home` **straight away** and create the admin account. Until
+   then, the first person on the LAN to open the page becomes admin.
+5. **Scanning** → *Settings → Scanning*: check the range is `192.168.1.0/24` (seeded from
+   `languard_ip_range` on the first start; the UI owns it after that).
+6. **Alerts** → *Settings → Notifications* → Discord → paste `vault_discord_webhook_url` (the
+   alert channel), event **New device**. Send a test.
+7. **Name the known devices** once the first scans are in: room, role, *regular* / *visitor*. The
+   static leases already in AdGuard give you the names. An unknown MAC is the thing to look at.
+8. **Uptime Kuma** → HTTP monitor `http://192.168.1.19:8480/api/v1/health/` (goes through the
+   UI to the backend, so it fails if either is down).
+
+### AdGuard integration
+
+LanGuard reads AdGuard's **query log** (read-only: its code only sends `GET` to `/control/status`,
+`/control/querylog/config` and `/control/querylog`) and stores counters per device, domain and
+query type. It matches each query to the device that held that IP at that moment. That works
+here because AdGuard is the DHCP server: every device queries it directly, with its own IP.
+
+**The catch:** AdGuard has no read-only accounts. Whatever login you give LanGuard can also change
+DNS, DHCP and the filters for the whole house. So give it **its own AdGuard user**, not yours — it
+can be revoked alone and never shares your password:
+
+1. Pick a password and keep it in the vault as `vault_languard_adguard_password` (reference only —
+   pasted into LanGuard's UI, nothing templates it). Hash it on the Beelink:
+   ```bash
+   ansible beelink -b -m command -a "docker run --rm httpd:2-alpine htpasswd -nbBC 10 languard '<password>'"
+   ```
+2. Add it to AdGuard, **container stopped** (AdGuard rewrites its config on exit). Plan it: the
+   house has no DNS for that minute.
+   ```bash
+   ansible beelink -b -m command -a "docker stop adguard"
+   # in /home/adguard/appdata/conf/AdGuardHome.yaml, under `users:`, next to your own entry:
+   #   - name: languard
+   #     password: $2y$10$…        # the hash after "languard:"
+   ansible beelink -b -m command -a "docker start adguard"
+   ```
+   Then check: `dig @192.168.1.19 jellyfin.home +short`.
+3. AdGuard → *Settings → General settings* → **Query logs enabled**. LanGuard can only import what
+   the retention window still holds, so it has no history from before its first sync.
+4. LanGuard → *Settings → Integrations → AdGuard Home* → URL `http://192.168.1.19:3000`, user
+   `languard` + the password → *Test connection* → save → *Sync now*. Results show on the
+   **DNS Activity** page and in each device's *DNS activity* tab.
+
+**To revoke:** remove the `languard` entry from `users:` (container stopped, same as above). To
+drop the integration entirely, disable it in LanGuard as well.
+
+**Verify:**
+```bash
+ansible beelink -b -m command -a "docker ps --filter name=languard"     # 3 containers, backend (healthy)
+curl -s http://192.168.1.19:8480/api/v1/health/          # → JSON, status ok
+ansible beelink -b -m command -a "docker logs --tail 30 languard-scanner"   # scan cycles + AdGuard sync
+```
+
 ## Troubleshooting
 
 ```bash
@@ -590,7 +690,8 @@ dashboard shows a **hardware** session.
 - **`[privilege_escalation]` needs the underscore** in `ansible.cfg`; with a space it's ignored
   and sudo silently doesn't apply.
 - **Port conflicts:** NPM owns 80/443, qBittorrent owns 8080 (via gluetun) → Glance published
-  on **8280**, AdGuard would need its UI off 80.
+  on **8280**, AdGuard would need its UI off 80, LanGuard's UI moved to **8480** (its backend
+  holds **8000**).
 - **Glance in a container** can't see host disks with `type: local` unless host paths are
   bind-mounted in (`/data`, `/home` → `/mnt/host/...:ro`) and referenced as mountpoints.
 - **Cross-project container names don't resolve.** Glance (its own project) reaches the media
