@@ -8,8 +8,9 @@
 # No /var/run/docker.sock on the scanner: upstream mounts it for the "Docker inventory"
 # integration, which Beszel and Dozzle already cover. A socket is root on the host, even :ro.
 x-languard-env: &languard-env
-  TZ: {{ timezone }}
-  TIME_ZONE: {{ timezone }}
+  # No TZ / TIME_ZONE: LanGuard stores naive timestamps (USE_TZ = False) in TIME_ZONE and
+  # converts AdGuard's query times to UTC. Anything but UTC shifts every query before the
+  # device that made it, and DNS activity stays empty. Display timezone: Settings > Regional.
   # Hosts the backend answers to. 127.0.0.1 is required: the health check uses it.
   ALLOWED_HOSTS: {{ vault_beelink_host }},languard.{{ local_domain }},127.0.0.1
   CSRF_TRUSTED_ORIGINS: http://languard.{{ local_domain }},http://{{ vault_beelink_host }}:{{ languard_frontend_port }}
