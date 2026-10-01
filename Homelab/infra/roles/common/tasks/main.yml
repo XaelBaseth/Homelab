@@ -66,6 +66,9 @@
           PubkeyAuthentication yes
           PasswordAuthentication no
           PermitRootLogin no
+          AllowUsers {{ ansible_user }}
+          MaxAuthTries 3
+          X11Forwarding no
       notify: Restart ssh
 
     - name: Validate the complete sshd configuration
@@ -79,3 +82,46 @@
     - name: Abort with a clear message
       ansible.builtin.fail:
         msg: "sshd config was invalid — hardening removed, nothing applied. SSH untouched."
+
+# Security patches only, nightly. Point releases and the Docker repo stay with the manual
+# `update.yml` run: Docker upgrades restart every container, so they are never unattended.
+# Reboots stay manual too — a new kernel or libc waits for one.
+- name: Install unattended-upgrades
+  ansible.builtin.apt:
+    name: unattended-upgrades
+    state: present
+
+- name: Turn on the nightly apt jobs
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      // Managed by Ansible (common role)
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
+      APT::Periodic::AutocleanInterval "7";
+
+- name: Limit unattended upgrades to Debian security
+  # Sorts after the package's 50unattended-upgrades. Lists in apt.conf append, so `#clear`
+  # first drops the stock origins (which also take point releases) before setting ours.
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/52unattended-upgrades-homelab
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      // Managed by Ansible (common role)
+      #clear Unattended-Upgrade::Origins-Pattern;
+      Unattended-Upgrade::Origins-Pattern {
+          "origin=Debian,codename=${distro_codename}-security,label=Debian-Security";
+          "origin=Debian,codename=${distro_codename},label=Debian-Security";
+      };
+      // Belt and braces: the Docker repo isn't in the patterns above anyway.
+      Unattended-Upgrade::Package-Blacklist {
+          "^docker-";
+          "^containerd\.io$";
+      };
+      Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";
+      Unattended-Upgrade::Automatic-Reboot "false";
