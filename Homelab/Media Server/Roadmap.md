@@ -37,6 +37,14 @@ stack from home today; these are the "next phase" items — most tied to standin
 
 ## Done
 
+- **Security baseline (2026-10-01)** — nightly `Debian-Security` auto-updates (Docker repo
+  excluded, no auto-reboot); an nftables fence that keeps SSH/NPM/AdGuard/Dockge admin ports to
+  the workstation; the read-only `docker-socket-proxy` in place of `docker.sock` for every tool
+  that only observes; SSH `AllowUsers beelink`, `MaxAuthTries 3`, no X11. See the [[Runbook]].
+  - **Still open:** backups (nothing backs up appdata yet), the IPv6 inbound policy on the
+    Livebox, LanGuard's `privileged` (try `NET_RAW`/`NET_ADMIN`), and Watchtower on the sensitive
+    containers (gluetun, npm, adguard, Dockge — monitor-only).
+
 - **LanGuard** (the `languard` role) — device inventory of the LAN and a Discord alert when an
   unknown device joins; the one thing the stack couldn't see (Uptime Kuma and Beszel watch
   services, AdGuard lists leases but never alerts). Host network + privileged for ARP, UI on

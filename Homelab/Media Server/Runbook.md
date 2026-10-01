@@ -18,7 +18,7 @@ infra/
 │       ├── vars.yml            # non-secret config (PUID/PGID, paths, timezone, local_domain, GPU GIDs)
 │       └── vault.yml           # ENCRYPTED secrets (see below)
 ├── playbooks/
-│   ├── site.yml                # full run: common → storage → docker → media_stack → webapps → glance → monitoring → administration → adguard → languard
+│   ├── site.yml                # full run: common → firewall → storage → docker → socket_proxy → media_stack → webapps → glance → monitoring → administration → adguard → languard
 │   ├── media.yml               # just the media stack (fast iteration)
 │   ├── dashboard.yml           # just Glance
 │   ├── monitoring.yml          # just the monitoring stack (Uptime Kuma + Beszel + heartbeat)
@@ -29,9 +29,11 @@ infra/
 │   ├── storage-provision.yml   # run ONCE by hand against a brand-new media drive
 │   └── update.yml              # manual weekly apt upgrade
 └── roles/
-    ├── common/                 # apt base, locale/timezone, SSH hardening (key-only), stacks_root
+    ├── common/                 # apt base, locale/timezone, SSH hardening (key-only), security auto-updates, stacks_root
+    ├── firewall/               # nftables fence: admin ports (22/81/3000/5001) from the admin workstation only
     ├── storage/                # Seagate → ext4 → /data + media tree
     ├── docker/                 # Docker Engine + compose plugin, data-root on /home
+    ├── socket_proxy/           # read-only Docker API (GET only) for Glance, Dozzle, Uptime Kuma, Beszel
     ├── media_stack/            # the docker-compose stack (templated) + secrets
     ├── glance/                 # the dashboard (separate compose project)
     ├── monitoring/             # Uptime Kuma + Beszel + healthchecks.io cron  (OBSERVE only)
@@ -107,6 +109,13 @@ ansible-playbook playbooks/site.yml
 # Weekly OS update (run on your reminder; tells you if a reboot is needed — never auto-reboots)
 ansible-playbook playbooks/update.yml
 ```
+
+**Security patches install themselves.** `unattended-upgrades` (common role) applies
+`Debian-Security` nightly — nothing else: point releases and the Docker repo stay with
+`update.yml`, since a Docker upgrade restarts every container. It never reboots; a new kernel
+waits for you (`uname -r` vs the newest `/boot/vmlinuz-*`). Note that `/var/run/reboot-required`,
+which `update.yml` checks, is an Ubuntu convention — Debian doesn't write it.
+Last run: `journalctl -u apt-daily-upgrade` or `/var/log/unattended-upgrades/`.
 
 **Adding a new service** to the media stack:
 1. Add its image tag to `roles/media_stack/defaults/main.yml`.
@@ -254,6 +263,20 @@ containers resolve through the host's resolvers (Livebox + Quad9), which don't k
 Glance uses the names exactly as NPM has them — `qbit.home` is short on purpose, and NPM's own
 admin is `npm.home`. Renaming a proxy host in NPM means updating `glance.yml.j2` to match.
 
+**Admin ports are fenced to the workstation.** SSH (22), NPM admin (81), AdGuard (3000) and
+Dockge (5001) answer only `firewall_admin_sources` (`roles/firewall/defaults/main.yml` — today
+`debianxael`, 192.168.1.101) on the LAN interface, and nobody over IPv6. Every other port above
+stays open to the whole LAN. Containers reaching the host IP are not affected.
+- **Each admin source needs a static lease in AdGuard**, or the next DHCP address locks it out.
+  `debianxael`'s was added for this (*Settings → DHCP settings → Static leases*).
+- **To admit another machine:** give it a static lease, add its IP to the list, and run
+  `site.yml` *from a machine already on it*. The role refuses to apply a set that excludes the
+  machine Ansible connects from, so it can't cut its own SSH.
+- **Locked out anyway:** at the Beelink's console, `sudo systemctl stop homelab-firewall`
+  (removes the table; Docker's rules are untouched). It is a table of its own (`inet homelab_fw`)
+  loaded by `homelab-firewall.service` — never enable Debian's `nftables.service`: its
+  `/etc/nftables.conf` starts with `flush ruleset`, which wipes Docker's NAT.
+
 **About the *arr login.** `Authentication Required: Disabled for Local Addresses` means a
 password exists (`vault_arr_password`, username `xael`) but is never asked for from a LAN
 address. If one of those ports is ever exposed beyond the LAN, the app asks for it. Do **not**
@@ -343,12 +366,23 @@ Bazarr then fetches the French subtitles. Config-as-code lives in the `media_sta
 ## Monitoring & Administration (two stacks, on purpose)
 
 Split by **job, not tool** (see [[Roadmap]] for the why): `monitoring` only **observes** (read-only
-sockets, can't change anything), `administration` **acts on** containers (control + updates). Keeping
+Docker API, can't change anything), `administration` **acts on** containers (control + updates). Keeping
 them apart means the observe layer has no power to break anything. All the web-UI tools have **no
 declarative config** — monitors, the Discord webhook, Beszel's agent key, and the Dozzle/Dockge admin
 accounts are set up once in each UI after the first deploy; the roles only stand up the containers.
 
-**`monitoring` stack — observe (`docker.sock` read-only):**
+**The observers never touch `docker.sock`.** A `:ro` mount only protects the socket *file*: any
+container holding it can still call the API and start a privileged container — root on the host.
+Glance, Dozzle, Uptime Kuma and the Beszel agent therefore go through **`docker-socket-proxy`**
+(the `socket_proxy` role, own compose project), which allows GET only, on containers, images and
+`/info`. They reach it on the internal `docker-api` network (`tcp://docker-socket-proxy:2375`);
+the host-network Beszel agent uses `127.0.0.1:2375`. Only Dockge and Watchtower hold the real socket.
+- A `403` in `docker logs docker-socket-proxy` means a tool needs a section that isn't granted —
+  add it to `socket_proxy_grants`, never `POST`.
+- `docker-api` is deliberately not `homelab`: container inspect includes every container's
+  environment (API keys, passwords), and the apps on `homelab` have no business reading it.
+
+**`monitoring` stack — observe (read-only Docker API):**
 
 | Tool | URL | Covers |
 |------|-----|--------|
@@ -360,7 +394,7 @@ accounts are set up once in each UI after the first deploy; the roles only stand
 
 | Tool | URL | Covers |
 |------|-----|--------|
-| Dozzle | `http://<beelink>:8888` | **Live log aggregation** across every container (socket `:ro` — reads logs, never controls) |
+| Dozzle | `http://<beelink>:8888` | **Live log aggregation** across every container (read-only Docker API — reads logs, never controls) |
 | Dockge | `http://<beelink>:5001` | **Compose-stack management** — start/stop/restart/update/edit every stack under `/home/stacks` |
 | Watchtower | (headless) | **Weekly auto-updater** (Saturday 08:00) — pulls + recreates outdated containers, cleans old images, summary → Discord |
 
@@ -373,8 +407,9 @@ accounts are set up once in each UI after the first deploy; the roles only stand
 1. **Uptime Kuma** (`:3001`): create the admin user → Settings → Notifications → add **Discord**
    (paste `vault_discord_webhook_url`) → add monitors: HTTP for each *arr/Jellyfin/Seerr, and **Docker**
    monitors for `gluetun` + `qbittorrent` (qBittorrent has no port of its own — it rides gluetun's network
-   — so a container-level check is the reliable signal). The Docker monitors work because the socket is
-   mounted `:ro` into the container. Uptime Kuma is a *separate* compose project, so all HTTP monitors use
+   — so a container-level check is the reliable signal). The Docker monitors use the Docker host
+   **`http://docker-socket-proxy:2375`, type TCP** (Settings → Docker Hosts) — the read-only proxy,
+   not the socket. Uptime Kuma is a *separate* compose project, so all HTTP monitors use
    the **Beelink LAN IP:port**, not container names.
 2. **Beszel bootstrap** (chicken-and-egg — the hub generates the agent credentials):
    - `:8090` → create user → **Add System**. Host = the Beelink's LAN IP, Port = `45876`.
