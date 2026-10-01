@@ -97,7 +97,7 @@ ansible-playbook playbooks/administration.yml
 # Deploy AdGuard Home (DNS ad-blocking + *.home names) — first run needs the wizard, see below
 ansible-playbook playbooks/adguard.yml
 
-# Deploy the webapps stack (Mealie, Seshat) — ships seshat:latest from this workstation if it changed
+# Deploy the webapps stack (Mealie, Seshat); add -e seshat_update=true to pull the latest Seshat release now
 ansible-playbook playbooks/webapps.yml
 
 # Deploy LanGuard (LAN device inventory + new-device alerts) — needs vault_languard_secret_key
@@ -505,19 +505,24 @@ Maintainerr, it is simply open on the LAN — no Access List. Unlike every other
 over the `homelab` network); `192.168.1.19:8000` does not answer. The `*.home` rewrite in AdGuard
 already resolves the name.
 
-There is no registry either. The image is built by hand on this workstation and the role ships it:
+Its image comes from the project's **private GitLab registry**. GitLab CI only builds and
+publishes: every commit on `main` gives `:<short sha>`, and a version tag `vX.Y.Z` (tests passing,
+versions matching) also gives `:vX.Y.Z` and `:latest`. CI never touches the homelab; the Beelink
+moves to a new `:latest` when we decide:
 
 ```bash
-# 1. In project-seshat: build from a committed ref → seshat:<sha> + seshat:latest
-infra/build-standalone.sh
-# 2. Here: the role docker-saves seshat:latest, copies it and docker-loads it on the Beelink —
-#    only when its image ID differs from the Beelink's copy; compose then recreates the container
-ansible-playbook playbooks/webapps.yml
+# Automatically: Watchtower's weekly run (the seshat container has watchtower.enable=true)
+# Now, by hand:
+ansible-playbook playbooks/webapps.yml -e seshat_update=true
+# Back to an older release: set seshat_image to …/project-seshat:v1.1.0 for this run
+ansible-playbook playbooks/webapps.yml -e seshat_update=true \
+  -e seshat_image=registry.gitlab.com/xaelbaseth/project-seshat:v1.1.0
 ```
 
-Only `seshat:latest` is shipped, so each new build leaves the previous one on the Beelink as a
-dangling `<none>` image (Watchtower ignores local images); clear them with `docker image prune`
-now and then.
+Pulling needs a **read-only deploy token** (project-seshat → Settings → Repository → Deploy
+tokens, scope `read_registry`), stored as `vault_seshat_registry_user` /
+`vault_seshat_registry_token` in `inventory/group_vars/all/vault.yml`. The role logs root in with
+it (`/root/.docker/config.json`); Watchtower reads the same directory (`DOCKER_CONFIG=/config`).
 
 ### Seshat — connecting devices
 

@@ -43,6 +43,7 @@ services:
       - TZ=${TZ}
       - WATCHTOWER_CLEANUP=true                        # remove old images after a successful update
       - WATCHTOWER_NO_STARTUP_MESSAGE=true
+      - DOCKER_CONFIG=/config                          # registry logins (the private Seshat registry)
       - WATCHTOWER_SCHEDULE={{ watchtower_schedule }}   # 6-field cron (with seconds) — pulls + recreates outdated containers
 {% if vault_watchtower_notification_url is defined and vault_watchtower_notification_url | length > 0 %}
       - WATCHTOWER_NOTIFICATION_URL=${WATCHTOWER_NOTIFICATION_URL}   # shoutrrr Discord URL, e.g. discord://TOKEN@ID
@@ -50,6 +51,8 @@ services:
 {% endif %}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock      # rw: reads image state and pulls/recreates outdated containers
+      # The directory, not config.json: mounting a file that doesn't exist yet makes Docker create a directory there.
+      - /root/.docker:/config:ro
     labels:                                            # headless — this label set is its only dashboard presence
       - glance.name=Watchtower
       - glance.icon=di:watchtower

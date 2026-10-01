@@ -12,58 +12,34 @@
     - "{{ webapps_appdata }}/mealie"      # Mealie's /app/data — SQLite db, recipe images, backups
     - "{{ seshat_library_path }}"          # Seshat's /data/libraries — runs as PUID, so owned by it
 
-# ── Seshat image: built on the workstation, shipped here (no registry) ──
-# Compared by image ID rather than tag, so rebuilding under the same tag still ships.
-- name: Read the Seshat image on the workstation
-  ansible.builtin.command: docker image inspect {{ seshat_image }}
-  delegate_to: localhost
-  become: false
-  run_once: true
-  changed_when: false
-  check_mode: false
-  register: seshat_local_image
+# ── Seshat image: pulled from the private GitLab registry ──
+- name: Check the Seshat registry token is in the vault
+  ansible.builtin.assert:
+    that:
+      - vault_seshat_registry_user is defined
+      - vault_seshat_registry_token is defined
+    fail_msg: >-
+      Create a GitLab deploy token (project-seshat > Settings > Repository > Deploy tokens,
+      scope read_registry) and add vault_seshat_registry_user / vault_seshat_registry_token
+      with `ansible-vault edit inventory/group_vars/all/vault.yml`.
+    quiet: true
 
-- name: Read the Seshat image on the host
-  community.docker.docker_image_info:
+# Written to /root/.docker/config.json: compose pulls with it, and Watchtower reads
+# the same directory (administration role).
+- name: Log in to the Seshat registry
+  community.docker.docker_login:
+    registry_url: "{{ seshat_registry }}"
+    username: "{{ vault_seshat_registry_user }}"
+    password: "{{ vault_seshat_registry_token }}"
+  no_log: true
+
+# Opt-in, so a routine converge never changes the running version behind your back.
+- name: Pull the latest Seshat release
+  when: seshat_update | bool
+  community.docker.docker_image:
     name: "{{ seshat_image }}"
-  register: seshat_remote_image
-
-- name: Compare the two image IDs
-  ansible.builtin.set_fact:
-    seshat_local_id: "{{ (seshat_local_image.stdout | from_json)[0].Id }}"
-    seshat_remote_id: "{{ seshat_remote_image.images[0].Id if seshat_remote_image.images else '' }}"
-    seshat_tarball: /tmp/seshat-image.tar
-
-- name: Ship the Seshat image
-  when: seshat_local_id != seshat_remote_id
-  block:
-    - name: Save the image on the workstation
-      ansible.builtin.command: docker save -o {{ seshat_tarball }} {{ seshat_image }}
-      delegate_to: localhost
-      become: false
-
-    - name: Copy the image tarball to the host
-      ansible.builtin.copy:
-        src: "{{ seshat_tarball }}"
-        dest: "{{ seshat_tarball }}"
-        mode: "0600"
-
-    - name: Load the image
-      community.docker.docker_image_load:
-        path: "{{ seshat_tarball }}"
-
-  always:
-    - name: Remove the tarball from the host
-      ansible.builtin.file:
-        path: "{{ seshat_tarball }}"
-        state: absent
-
-    - name: Remove the tarball from the workstation
-      ansible.builtin.file:
-        path: "{{ seshat_tarball }}"
-        state: absent
-      delegate_to: localhost
-      become: false
+    source: pull
+    force_source: true
 
 - name: Render the stack environment file (secrets from the vault)
   ansible.builtin.template:

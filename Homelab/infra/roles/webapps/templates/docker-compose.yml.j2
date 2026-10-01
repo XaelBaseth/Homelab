@@ -29,7 +29,7 @@ services:
   seshat:
     image: {{ seshat_image }}
     container_name: seshat
-    pull_policy: never                 # local-only image (docker load); never look it up on Docker Hub
+    pull_policy: missing               # first deploy pulls; later releases come from Watchtower or seshat_update
     user: "${PUID}:${PGID}"            # library files on the HDD stay owned by the media user
     environment:
       - TZ=${TZ}
@@ -46,7 +46,7 @@ services:
         limits:
           memory: 1500M                # Calibre conversions of large books are the peak
     labels:
-      - com.centurylinklabs.watchtower.enable=false   # local image, nothing to pull
+      - com.centurylinklabs.watchtower.enable=true    # weekly: moves to a new :latest release, if any
       - glance.name=Seshat
       - glance.icon=http://seshat.{{ local_domain }}/favicon.svg   # our own emblem, served by Seshat itself
       - glance.url=http://seshat.{{ local_domain }}

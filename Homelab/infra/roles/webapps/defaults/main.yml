@@ -15,10 +15,14 @@ webapps_appdata: /home/webapps/appdata
 mealie_port: 9925
 
 # ── Seshat (ebook library) ──
-# No registry: build the image on the workstation yourself (project-seshat:
-# infra/build-standalone.sh), then this role ships it over with docker save/load
-# whenever the host's copy differs.
-seshat_image: seshat:latest
+# GitLab CI publishes releases to the project's private registry (:vX.Y.Z and
+# :latest on a version tag). CI never deploys: Watchtower picks up a new :latest
+# on its weekly run, or run this playbook with -e seshat_update=true to pull now.
+# Pulling needs a read_registry deploy token in the vault
+# (vault_seshat_registry_user / vault_seshat_registry_token).
+seshat_registry: registry.gitlab.com
+seshat_image: "{{ seshat_registry }}/xaelbaseth/project-seshat:latest"
+seshat_update: false
 seshat_library_path: "{{ media_root }}/books"   # books + SQLite dbs, on the ext4 media drive
 seshat_max_upload_mb: 500
 seshat_max_concurrent_conversions: 2
