@@ -27,3 +27,11 @@ local_domain: home
 # explicitly — an auto-assigned range could change on recreate and silently cut
 # qBittorrent's WebUI off from Uptime Kuma, which probes it by container name.
 homelab_subnet: 172.23.0.0/16
+
+# Read-only Docker API (socket_proxy role) for the tools that only observe containers.
+# Internal network joined by those observers only — not `homelab`, whose apps would then
+# read every container's `docker inspect`, environment secrets included.
+socket_proxy_network: docker-api
+socket_proxy_host: docker-socket-proxy
+socket_proxy_port: 2375                        # also published on 127.0.0.1, for the host-network Beszel agent
+docker_api_url: "tcp://{{ socket_proxy_host }}:{{ socket_proxy_port }}"

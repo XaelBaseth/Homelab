@@ -8,10 +8,10 @@ services:
       - {{ uptime_kuma_port }}:3001
     volumes:
       - {{ monitoring_appdata }}/uptime-kuma:/app/data
-      - /var/run/docker.sock:/var/run/docker.sock:ro   # enables Docker container monitors (e.g. qbittorrent, behind gluetun)
     networks:
       - default
       - homelab                                        # the media-stack apps no longer publish host ports, so probe them by container name
+      - {{ socket_proxy_network }}                     # Docker container monitors (e.g. qbittorrent, behind gluetun) — Docker host {{ docker_api_url }}, set in the UI
     restart: unless-stopped
 
   beszel:
@@ -35,15 +35,17 @@ services:
       - KEY=${BESZEL_AGENT_KEY}                         # hub's ssh-ed25519 PUBLIC key (NOT the token) — from the Add System dialog
       - TOKEN=${BESZEL_AGENT_TOKEN}                     # registration token — from the Add System dialog
       - HUB_URL=http://{{ vault_beelink_host }}:{{ beszel_hub_port }}
+      - DOCKER_HOST=tcp://127.0.0.1:{{ socket_proxy_port }}   # per-container CPU/mem/net stats, via the read-only proxy (host net: loopback, not the docker-api network)
     volumes:
       - {{ monitoring_appdata }}/beszel-agent:/var/lib/beszel-agent
-      - /var/run/docker.sock:/var/run/docker.sock:ro   # per-container CPU/mem/net stats
       - {{ media_root }}/.beszel:/extra-filesystems/data:ro   # exposes the /data media drive's usage (empty marker dir — no media files)
     restart: unless-stopped
 
 # Shared network so Uptime Kuma can reach the media-stack apps by container name
-# now that they no longer publish host ports.
+# now that they no longer publish host ports; docker-api for the read-only Docker API.
 networks:
   default:
   homelab:
+    external: true
+  {{ socket_proxy_network }}:
     external: true

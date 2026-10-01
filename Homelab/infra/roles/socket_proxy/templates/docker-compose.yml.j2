@@ -1,0 +1,27 @@
+services:
+  docker-socket-proxy:
+    image: {{ socket_proxy_image }}
+    container_name: {{ socket_proxy_host }}
+    environment:
+      - POST=0                                         # read-only API, whatever else is granted
+{% for name, value in socket_proxy_grants.items() %}
+      - {{ name }}={{ value }}
+{% endfor %}
+    ports:
+      - 127.0.0.1:{{ socket_proxy_port }}:2375         # loopback only — for the host-network Beszel agent
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro   # the only observer that still touches the real socket
+    networks:
+      - default                                        # a non-internal network, needed to publish the port above
+      - {{ socket_proxy_network }}
+    labels:
+      - glance.name=Socket proxy
+      - glance.icon=di:docker
+      - glance.description=Read-only Docker API for Glance, Dozzle, Uptime Kuma, Beszel
+    restart: unless-stopped
+
+networks:
+  default:
+  {{ socket_proxy_network }}:
+    name: {{ socket_proxy_network }}                   # fixed name: the other stacks join it as `external`
+    internal: true

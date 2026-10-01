@@ -7,6 +7,7 @@
     - firewall
     - storage
     - docker
+    - socket_proxy  # before glance/monitoring/administration: creates the docker-api network they join
     - media_stack
     - webapps       # also joins the `homelab` network, created by the docker role
     - glance

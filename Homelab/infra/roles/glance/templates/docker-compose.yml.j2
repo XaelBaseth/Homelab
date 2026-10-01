@@ -12,13 +12,15 @@ services:
       - ./config/glance.yml:/app/config/glance.yml
       - ./assets:/app/assets        # served at /assets/ (custom.css)
       # No host disk mounts: server stats come from Beszel's API, not from Glance itself.
-      - /var/run/docker.sock:/var/run/docker.sock:ro   # docker-containers widget (live status of every container, incl. headless Watchtower)
     networks:
       - default
       - homelab                     # media-stack apps dropped their host ports; the monitor widget reaches them by container name
+      - {{ socket_proxy_network }}  # docker-containers widget, through the read-only Docker API (sock-path in glance.yml)
     restart: unless-stopped
 
 networks:
   default:
   homelab:
+    external: true
+  {{ socket_proxy_network }}:
     external: true

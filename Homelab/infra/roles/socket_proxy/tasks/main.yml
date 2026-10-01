@@ -1,0 +1,23 @@
+---
+- name: Create the socket-proxy stack directory
+  ansible.builtin.file:
+    path: "{{ socket_proxy_dir }}"
+    state: directory
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0755"
+
+- name: Render the docker-compose file
+  ansible.builtin.template:
+    src: docker-compose.yml.j2
+    dest: "{{ socket_proxy_dir }}/docker-compose.yml"
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0644"
+
+# Also creates the `docker-api` network that glance, monitoring and administration join as
+# `external` — so this role runs before them in site.yml.
+- name: Deploy the socket-proxy stack
+  community.docker.docker_compose_v2:
+    project_src: "{{ socket_proxy_dir }}"
+    state: present

@@ -1,0 +1,17 @@
+---
+# ── Read-only Docker API for the tools that only OBSERVE containers ──
+# Glance, Dozzle, Uptime Kuma and the Beszel agent used to mount /var/run/docker.sock. A `:ro`
+# mount only stops writes to the socket FILE, not calls to the API through it, so each of them
+# could create a privileged container — root on the host. They now go through this proxy,
+# which answers GET/HEAD only (POST=0). Dockge and Watchtower keep the real socket: they act.
+socket_proxy_image: tecnativa/docker-socket-proxy:v0.5.0   # pinned: Watchtower only follows the same tag
+
+socket_proxy_dir: "{{ stacks_root }}/socket-proxy"
+
+# What the observers need: container list/inspect/logs/stats, /info, and image inspect (the
+# Beszel agent reads each container's image). Everything else (networks, volumes, exec, any
+# POST) stays at the image's default of denied.
+socket_proxy_grants:
+  CONTAINERS: 1
+  IMAGES: 1
+  INFO: 1

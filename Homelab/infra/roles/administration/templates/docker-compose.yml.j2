@@ -4,10 +4,12 @@ services:
     container_name: dozzle
     environment:
       - TZ=${TZ}
+      - DOCKER_HOST={{ docker_api_url }}               # read-only proxy: Dozzle only tails logs, never controls containers
     ports:
       - {{ dozzle_port }}:8080
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro   # read-only: Dozzle only tails logs, never controls containers
+    networks:
+      - default
+      - {{ socket_proxy_network }}
     labels:                                            # Glance docker-containers widget presentation
       - glance.name=Dozzle
       - glance.icon=di:dozzle
@@ -24,7 +26,7 @@ services:
     ports:
       - {{ dockge_port }}:5001
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock      # rw: Dockge starts/stops/updates stacks (Dozzle's is ro — it can't)
+      - /var/run/docker.sock:/var/run/docker.sock      # rw: Dockge starts/stops/updates stacks (Dozzle reads through the proxy — it can't)
       - {{ administration_appdata }}/dockge:/app/data
       - {{ stacks_root }}:{{ stacks_root }}            # stacks bind-mounted at the SAME path in and out (Dockge requirement)
     labels:
@@ -54,3 +56,8 @@ services:
       - glance.url=http://dozzle.{{ local_domain }}
       - glance.description=Auto-updater — pulls weekly, alerts to Discord; logs in Dozzle
     restart: unless-stopped
+
+networks:
+  default:
+  {{ socket_proxy_network }}:
+    external: true

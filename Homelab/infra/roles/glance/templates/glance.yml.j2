@@ -486,9 +486,10 @@ pages:
     columns:
       - size: full
         widgets:
-          # Live run-state of EVERY container (reads docker.sock :ro). This is where headless
+          # Live run-state of EVERY container (read-only Docker API proxy). This is where headless
           # Watchtower gets its dashboard presence; per-container display comes from glance.* labels.
           - type: docker-containers
             title: Containers
+            sock-path: {{ docker_api_url }}   # read-only proxy (socket_proxy role), not the raw socket
             cache: 30s
             hide-by-default: false
