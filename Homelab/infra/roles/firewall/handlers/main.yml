@@ -1,0 +1,6 @@
+---
+- name: Reload homelab firewall
+  ansible.builtin.systemd:
+    name: homelab-firewall
+    state: restarted
+    daemon_reload: true

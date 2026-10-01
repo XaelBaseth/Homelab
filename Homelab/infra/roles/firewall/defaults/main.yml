@@ -1,0 +1,19 @@
+---
+# ── Admin ports, reachable from the admin workstation(s) only ──
+# Everything else on the LAN stays open as before: this is not a default-deny firewall, only
+# a fence around the ports that control the box. Dropped from other LAN hosts and over IPv6.
+
+# The interface carrying the default route — enp1s0 here (common_lan_interface, but that is
+# the common role's default and not visible when this role runs on its own).
+firewall_lan_interface: "{{ ansible_facts['default_ipv4']['interface'] }}"
+
+# Each needs a STATIC lease in AdGuard, or a new DHCP address locks it out.
+# 192.168.1.101 = debianxael (static lease b8:8a:60:73:f2:85).
+firewall_admin_sources:
+  - 192.168.1.101
+
+firewall_admin_ports:
+  - 22     # SSH
+  - 81     # NPM admin UI
+  - 3000   # AdGuard admin UI (DNS 53 / DHCP 67 stay open to the whole LAN)
+  - 5001   # Dockge — rw Docker socket, i.e. root on the host

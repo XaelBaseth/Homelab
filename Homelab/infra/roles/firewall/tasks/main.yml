@@ -1,0 +1,67 @@
+---
+# Lock-out guard: SSH is one of the fenced ports, so refuse to apply a rule set that would
+# drop the very connection Ansible is running over.
+- name: Read the address this Ansible run connects from
+  ansible.builtin.shell: echo "${SSH_CLIENT%% *}"
+  become: false
+  register: firewall_controller_ip
+  changed_when: false
+  check_mode: false   # read-only; the guard must hold in --check too
+
+- name: Refuse to fence out the controller
+  ansible.builtin.assert:
+    that: firewall_controller_ip.stdout in firewall_admin_sources
+    fail_msg: >-
+      This run comes from {{ firewall_controller_ip.stdout }}, which is not in firewall_admin_sources
+      {{ firewall_admin_sources }} — applying would cut SSH. Add it (with a static lease) first.
+
+- name: Install nftables
+  ansible.builtin.apt:
+    name: nftables
+    state: present
+
+# Debian's nftables.service loads /etc/nftables.conf, which starts with `flush ruleset` and
+# would wipe Docker's rules. It stays disabled; this unit loads only our own table.
+- name: Deploy the rule set
+  ansible.builtin.template:
+    src: homelab-firewall.nft.j2
+    dest: /etc/homelab-firewall.nft
+    owner: root
+    group: root
+    mode: "0644"
+    validate: nft -c -f %s
+  notify: Reload homelab firewall
+
+- name: Deploy the systemd unit that loads it at boot
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/homelab-firewall.service
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (firewall role)
+      [Unit]
+      Description=Homelab admin-port fence (nftables table inet homelab_fw)
+      # Same early-boot ordering as Debian's nftables.service: up before any interface is.
+      Wants=network-pre.target
+      Before=network-pre.target shutdown.target
+      Conflicts=shutdown.target
+      DefaultDependencies=no
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/usr/sbin/nft -f /etc/homelab-firewall.nft
+      ExecReload=/usr/sbin/nft -f /etc/homelab-firewall.nft
+      ExecStop=/usr/sbin/nft delete table inet homelab_fw
+
+      [Install]
+      WantedBy=multi-user.target
+  notify: Reload homelab firewall
+
+- name: Enable and start it
+  ansible.builtin.systemd:
+    name: homelab-firewall
+    enabled: true
+    state: started
+    daemon_reload: true

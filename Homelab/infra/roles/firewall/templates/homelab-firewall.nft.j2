@@ -1,0 +1,36 @@
+#!/usr/sbin/nft -f
+# Managed by Ansible (firewall role).
+#
+# A table of its own, never `flush ruleset`: Docker keeps its NAT/filter rules in other tables,
+# and a flush would cut every container off. A packet must pass EVERY base chain on a hook, so
+# a drop here holds whatever Docker's tables say. Re-applied atomically: create, delete, define.
+table inet homelab_fw
+delete table inet homelab_fw
+
+table inet homelab_fw {
+	set admin_v4 {
+		type ipv4_addr
+		elements = { {{ firewall_admin_sources | join(', ') }} }
+	}
+
+	set admin_ports {
+		type inet_service
+		elements = { {{ firewall_admin_ports | join(', ') }} }
+	}
+
+	# Host services (sshd, AdGuard on host network) and Docker's userland proxy (IPv6 to a
+	# published port). Only the LAN interface: containers probing the host IP are left alone.
+	chain input {
+		type filter hook input priority filter - 10; policy accept;
+		iifname "{{ firewall_lan_interface }}" tcp dport @admin_ports ip saddr @admin_v4 accept
+		iifname "{{ firewall_lan_interface }}" tcp dport @admin_ports drop
+	}
+
+	# Published container ports (NPM admin, Dockge): Docker DNATs them in prerouting, so they
+	# never reach `input`. Match on the port the client dialled, before translation.
+	chain forward {
+		type filter hook forward priority filter - 10; policy accept;
+		iifname "{{ firewall_lan_interface }}" ct status dnat ct original proto-dst @admin_ports ip saddr @admin_v4 accept
+		iifname "{{ firewall_lan_interface }}" ct status dnat ct original proto-dst @admin_ports drop
+	}
+}
