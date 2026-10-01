@@ -1,0 +1,11 @@
+# Managed by Ansible (webapps role)
+[Unit]
+Description=Snapshot Seshat's databases and covers
+
+[Service]
+Type=oneshot
+# The owner of the library: a root connection could leave root-owned -wal/-shm files
+# next to databases the container must write.
+User={{ media_owner }}
+Group={{ media_group }}
+ExecStart=/usr/local/bin/seshat-backup

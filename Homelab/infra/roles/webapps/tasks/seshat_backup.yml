@@ -1,0 +1,39 @@
+---
+# Daily snapshot of Seshat's databases and covers, and a restore script for them.
+- name: Create the Seshat backup directory
+  ansible.builtin.file:
+    path: "{{ seshat_backup_dir }}"
+    state: directory
+    owner: "{{ media_owner }}"
+    group: "{{ media_group }}"
+    mode: "0750"
+
+- name: Install the Seshat backup and restore scripts
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "/usr/local/bin/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "{{ item.mode }}"
+  loop:
+    - { src: seshat-backup.py.j2, dest: seshat-backup, mode: "0755" }
+    - { src: seshat-restore.py.j2, dest: seshat-restore, mode: "0750" }   # stops the container: root only
+
+- name: Install the Seshat backup service and timer
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - seshat-backup.service
+    - seshat-backup.timer
+  register: seshat_backup_units
+
+- name: Enable the Seshat backup timer
+  ansible.builtin.systemd_service:
+    name: seshat-backup.timer
+    enabled: true
+    state: started
+    daemon_reload: "{{ seshat_backup_units is changed }}"

@@ -41,7 +41,7 @@ stack from home today; these are the "next phase" items — most tied to standin
   excluded, no auto-reboot); an nftables fence that keeps SSH/NPM/AdGuard/Dockge admin ports to
   the workstation; the read-only `docker-socket-proxy` in place of `docker.sock` for every tool
   that only observes; SSH `AllowUsers beelink`, `MaxAuthTries 3`, no X11. See the [[Runbook]].
-  - **Still open:** backups (nothing backs up appdata yet), the IPv6 inbound policy on the
+  - **Still open:** backups (only Seshat is covered, since 2026-10-01; other appdata isn't), the IPv6 inbound policy on the
     Livebox, LanGuard's `privileged` (try `NET_RAW`/`NET_ADMIN`), and Watchtower on the sensitive
     containers (gluetun, npm, adguard, Dockge — monitor-only).
 

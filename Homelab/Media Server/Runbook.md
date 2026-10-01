@@ -524,6 +524,31 @@ tokens, scope `read_registry`), stored as `vault_seshat_registry_user` /
 `vault_seshat_registry_token` in `inventory/group_vars/all/vault.yml`. The role logs root in with
 it (`/root/.docker/config.json`); Watchtower reads the same directory (`DOCKER_CONFIG=/config`).
 
+### Seshat — backups
+
+Book files are not backed up: they come back from their sources. What doesn't come back is in
+Seshat's SQLite databases (reading progress and time, finished books, edited metadata, series and
+their tags, library icons) and the covers changed by hand. The webapps role snapshots those:
+
+- `seshat-backup.timer` runs `/usr/local/bin/seshat-backup` daily at 03:30, as `beelink`, into
+  `/home/backups/seshat/<date>/` — on the system SSD, not the media drive holding the library.
+  SQLite's online backup API gives a consistent copy while Seshat runs; each copy is
+  integrity-checked. The newest 14 are kept (~26 MB each).
+- `sudo seshat-restore latest` (or a snapshot name) stops Seshat, sets the current databases and
+  covers aside in `/home/backups/seshat-pre-restore/<date>/`, puts the snapshot back, restarts
+  Seshat and waits for `/readyz`. To undo a restore, restore from that pre-restore copy the same
+  way. Clear old pre-restore copies by hand.
+
+```bash
+seshat-backup --list            # snapshots and sizes
+sudo -u beelink seshat-backup   # take one now
+sudo seshat-restore latest      # put the newest back (Seshat down ~10 s)
+```
+
+Tested 2026-10-01: a rehearsal on a throwaway container (a change made after the backup was undone),
+then a real restore on production with an identical before/after fingerprint of every library
+(books, progress, series, tags). Still to do: a copy off the Beelink.
+
 ### Seshat — connecting devices
 
 All devices go through `http://seshat.home`, no credentials. Books are

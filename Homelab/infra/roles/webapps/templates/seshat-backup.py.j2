@@ -1,0 +1,82 @@
+#!/usr/bin/env python3
+# Managed by Ansible (webapps role). Snapshots what Seshat can't get back from the
+# book files themselves: its SQLite databases (progress, reading time, edited
+# metadata, series, tags) and the covers. Book files are left out on purpose.
+#
+#   seshat-backup                 take a snapshot, then keep the newest {{ seshat_backup_keep }}
+#   seshat-backup --list          list snapshots
+import argparse
+import shutil
+import sqlite3
+import sys
+from datetime import datetime
+from pathlib import Path
+
+LIBRARY = Path("{{ seshat_library_path }}")
+BACKUPS = Path("{{ seshat_backup_dir }}")
+KEEP = {{ seshat_backup_keep }}
+
+
+def databases() -> list[Path]:
+    return [LIBRARY / "registry.db", *sorted(LIBRARY.glob("*/library.db"))]
+
+
+def covers() -> list[Path]:
+    return sorted(LIBRARY.glob("*/books/*/cover.*"))
+
+
+# The online backup API copies a consistent state while Seshat keeps writing (WAL).
+def copy_database(source: Path, target: Path) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(f"file:{source}?mode=ro", uri=True) as src, sqlite3.connect(target) as dst:
+        src.backup(dst)
+    with sqlite3.connect(target) as check:
+        result = check.execute("PRAGMA integrity_check").fetchone()[0]
+    if result != "ok":
+        raise RuntimeError(f"{target}: integrity check failed: {result}")
+
+
+def snapshot() -> Path:
+    stamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    work = BACKUPS / f".{stamp}.partial"
+    for db in databases():
+        copy_database(db, work / db.relative_to(LIBRARY))
+    for cover in covers():
+        target = work / cover.relative_to(LIBRARY)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(cover, target)
+    # Renamed last, so an interrupted run never looks like a usable snapshot.
+    final = BACKUPS / stamp
+    work.rename(final)
+    return final
+
+
+def snapshots() -> list[Path]:
+    return sorted(p for p in BACKUPS.iterdir() if p.is_dir() and not p.name.startswith("."))
+
+
+def prune() -> None:
+    for old in snapshots()[:-KEEP]:
+        shutil.rmtree(old)
+    for partial in BACKUPS.glob(".*.partial"):
+        shutil.rmtree(partial)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Back up Seshat's databases and covers")
+    parser.add_argument("--list", action="store_true", help="list snapshots and exit")
+    args = parser.parse_args()
+    BACKUPS.mkdir(parents=True, exist_ok=True)
+    if args.list:
+        for snap in snapshots():
+            size = sum(f.stat().st_size for f in snap.rglob("*") if f.is_file())
+            print(f"{snap.name}  {size / 2**20:.1f} MiB")
+        return 0
+    final = snapshot()
+    prune()
+    print(f"snapshot {final.name}: {len(databases())} databases, {len(covers())} covers")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

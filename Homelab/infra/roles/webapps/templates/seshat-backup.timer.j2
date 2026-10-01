@@ -1,0 +1,12 @@
+# Managed by Ansible (webapps role)
+[Unit]
+Description=Daily Seshat backup
+
+[Timer]
+OnCalendar={{ seshat_backup_schedule }}
+# Catch up after the host was off at the scheduled time.
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target

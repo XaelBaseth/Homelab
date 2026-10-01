@@ -1,0 +1,118 @@
+#!/usr/bin/env python3
+# Managed by Ansible (webapps role). Puts a seshat-backup snapshot back in place.
+#
+#   sudo seshat-restore latest          restore the newest snapshot
+#   sudo seshat-restore 2026-10-01_033000
+#
+# Seshat is stopped for the copy. The current databases and covers are first set
+# aside in {{ seshat_backup_dir }}-pre-restore/, so a wrong restore can be undone the
+# same way. Book files are not touched.
+import argparse
+import os
+import shutil
+import sqlite3
+import subprocess
+import sys
+import time
+from datetime import datetime
+from pathlib import Path
+
+LIBRARY = Path("{{ seshat_library_path }}")
+BACKUPS = Path("{{ seshat_backup_dir }}")
+SAFETY = Path("{{ seshat_backup_dir }}-pre-restore")
+CONTAINER = "{{ seshat_restore_container | default('seshat') }}"
+
+
+def pick(name: str) -> Path:
+    snaps = sorted(p for p in BACKUPS.iterdir() if p.is_dir() and not p.name.startswith("."))
+    if not snaps:
+        sys.exit(f"no snapshot in {BACKUPS}")
+    snap = snaps[-1] if name == "latest" else BACKUPS / name
+    if not snap.is_dir():
+        sys.exit(f"no snapshot named {name}; available: {', '.join(p.name for p in snaps)}")
+    return snap
+
+
+def check(snap: Path) -> list[Path]:
+    dbs = sorted(snap.rglob("*.db"))
+    if snap / "registry.db" not in dbs:
+        sys.exit(f"{snap} has no registry.db")
+    for db in dbs:
+        with sqlite3.connect(f"file:{db}?mode=ro", uri=True) as conn:
+            if conn.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
+                sys.exit(f"{db} is damaged; pick another snapshot")
+    return [db.relative_to(snap) for db in dbs]
+
+
+def docker(*args: str) -> None:
+    subprocess.run(["docker", *args], check=True, stdout=subprocess.DEVNULL)
+
+
+# Seshat is stopped, so -wal files are folded in by a plain backup copy.
+def set_aside(rel_dbs: list[Path], rel_covers: list[Path]) -> Path:
+    target = SAFETY / datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    for rel in rel_dbs:
+        source = LIBRARY / rel
+        if source.exists():
+            (target / rel).parent.mkdir(parents=True, exist_ok=True)
+            with sqlite3.connect(source) as src, sqlite3.connect(target / rel) as dst:
+                src.backup(dst)
+    for rel in rel_covers:
+        if (LIBRARY / rel).exists():
+            (target / rel).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(LIBRARY / rel, target / rel)
+    return target
+
+
+def put_back(snap: Path, rel_files: list[Path]) -> None:
+    owner = LIBRARY.stat()
+    for rel in rel_files:
+        target = LIBRARY / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if rel.suffix == ".db":
+            for stale in (Path(f"{target}-wal"), Path(f"{target}-shm")):
+                stale.unlink(missing_ok=True)
+        shutil.copy2(snap / rel, target)
+        os.chown(target, owner.st_uid, owner.st_gid)
+        os.chown(target.parent, owner.st_uid, owner.st_gid)
+
+
+def wait_ready(timeout: int = 90) -> bool:
+    probe = "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/readyz', timeout=3)"
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        result = subprocess.run(["docker", "exec", CONTAINER, "python", "-c", probe], capture_output=True)
+        if result.returncode == 0:
+            return True
+        time.sleep(2)
+    return False
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Restore Seshat's databases and covers from a snapshot")
+    parser.add_argument("snapshot", help="snapshot name, or 'latest'")
+    args = parser.parse_args()
+    if os.geteuid() != 0:
+        sys.exit("run as root (it stops the container and sets file owners)")
+
+    snap = pick(args.snapshot)
+    rel_dbs = check(snap)
+    rel_covers = [c.relative_to(snap) for c in sorted(snap.glob("*/books/*/cover.*"))]
+    print(f"restoring {snap.name}: {len(rel_dbs)} databases, {len(rel_covers)} covers")
+
+    docker("stop", CONTAINER)
+    try:
+        aside = set_aside(rel_dbs, rel_covers)
+        print(f"current state set aside in {aside}")
+        put_back(snap, rel_dbs + rel_covers)
+    finally:
+        docker("start", CONTAINER)
+    if not wait_ready():
+        print("seshat did not become ready; check `docker logs seshat`", file=sys.stderr)
+        return 1
+    print("seshat is back and ready")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

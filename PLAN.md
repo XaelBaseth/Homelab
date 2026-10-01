@@ -289,7 +289,9 @@ add the next service group.** Add services in this order, verifying each before 
     host `seshat.home` → `seshat:8000` (no Access List; AdGuard's `*.home` rewrite already
     resolves it); Uptime Kuma HTTP monitor `http://seshat:8000/readyz`. Deployed and verified:
     container healthy, `/readyz` ok, first ebook uploaded through `seshat.home`.
-    Setup steps in the Runbook (§ Webapps). No backup on purpose: the library is re-creatable.
+    Setup steps in the Runbook (§ Webapps). Book files aren't backed up (re-creatable), but since
+    2026-10-01 the databases and covers are (progress, edits, series — not re-creatable): daily
+    snapshot to the SSD, restore tested on production (Runbook § Seshat — backups).
     Devices (Runbook § Seshat — connecting devices): PC + phone = Seshat's built-in web reader
     (AO3-style panel, epub.js) or OPDS app (KOReader/Librera) for offline, no credentials;
     Kindle Colorsoft = no jailbreak, Send to Kindle or Calibre desktop over USB (MTP).

@@ -65,3 +65,6 @@
     project_src: "{{ webapps_dir }}"
     state: present
     remove_orphans: true
+
+- name: Back up Seshat
+  ansible.builtin.import_tasks: seshat_backup.yml
